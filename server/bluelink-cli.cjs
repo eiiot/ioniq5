@@ -61,6 +61,9 @@ client.once("ready", async (vehicles) => {
         lastUpdate: status?.lastupdate ?? null,
       };
     }
+    if (typeof result === "string" && /^failed\b/i.test(result)) {
+      throw new Error(result);
+    }
     clearTimeout(timeout);
     console.log(JSON.stringify({ ok: true, action, result }));
     process.exit(0);
