@@ -2,6 +2,7 @@
   "expo": {
     "name": "IONIQ 5",
     "slug": "ioniq5",
+    "owner": "elioth",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -40,6 +41,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "068c5784-d4f0-4e7f-afcf-874ed21f759c"
+      }
     }
   }
 }
