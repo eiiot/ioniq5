@@ -10,9 +10,7 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerBackButtonDisplayMode: 'minimal',
-          headerBlurEffect: 'systemMaterial',
           headerShadowVisible: false,
-          headerTransparent: true,
         }}>
         <Stack.Screen
           name="index"
@@ -32,4 +30,3 @@ export default function RootLayout() {
     </ThemeProvider>
   );
 }
-

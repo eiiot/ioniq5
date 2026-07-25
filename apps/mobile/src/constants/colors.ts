@@ -7,6 +7,11 @@ export const colors = {
     android: Color.android.dynamic.surface,
     default: '#eef4f2',
   })!,
+  fieldBackground: Platform.select({
+    ios: Color.ios.secondarySystemBackground,
+    android: Color.android.dynamic.surfaceContainer,
+    default: '#f2f2f7',
+  })!,
   label: Platform.select({
     ios: Color.ios.label,
     android: Color.android.dynamic.onSurface,
@@ -21,6 +26,16 @@ export const colors = {
     ios: Color.ios.tertiaryLabel,
     android: Color.android.dynamic.outline,
     default: '#76847f',
+  })!,
+  separator: Platform.select({
+    ios: Color.ios.separator,
+    android: Color.android.dynamic.outlineVariant,
+    default: '#c6c6c8',
+  })!,
+  blue: Platform.select({
+    ios: Color.ios.systemBlue,
+    android: Color.android.dynamic.primary,
+    default: '#007aff',
   })!,
   green: Platform.select({
     ios: Color.ios.systemGreen,
@@ -38,4 +53,3 @@ export const colors = {
     default: '#d13c3c',
   })!,
 };
-

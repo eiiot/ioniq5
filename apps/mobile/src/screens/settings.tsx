@@ -8,10 +8,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View,
 } from 'react-native';
 
-import { AdaptiveGlass } from '@/components/adaptive-glass';
 import { API_BASE_URL } from '@/constants/api';
 import { colors } from '@/constants/colors';
 import { credentials } from '@/services/credentials';
@@ -41,53 +39,47 @@ export function SettingsScreen() {
   return (
     <KeyboardAvoidingView behavior={process.env.EXPO_OS === 'ios' ? 'padding' : undefined} style={styles.root}>
       <ScrollView
+        style={{ backgroundColor: colors.background }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.content}>
-        <AdaptiveGlass style={styles.card}>
-          <View style={styles.copy}>
-            <Text style={[styles.title, { color: colors.label }]}>API access</Text>
-            <Text style={[styles.description, { color: colors.secondaryLabel }]}>
-              The key authorizes this device to control your comma at{' '}
-              <Text selectable>{API_BASE_URL}</Text>. It is stored in the iOS
-              Keychain and never bundled into the app.
-            </Text>
-          </View>
+        <Text style={[styles.description, { color: colors.secondaryLabel }]}>
+          Enter the key for <Text selectable>{API_BASE_URL}</Text>. It is stored
+          in the iOS Keychain.
+        </Text>
 
-          {isLoading ? (
-            <ActivityIndicator color={colors.green} />
+        {isLoading ? (
+          <ActivityIndicator />
+        ) : (
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setApiKey}
+            placeholder="API key"
+            placeholderTextColor={colors.tertiaryLabel}
+            secureTextEntry
+            selectionColor={colors.blue}
+            style={[
+              styles.input,
+              {
+                color: colors.label,
+                backgroundColor: colors.fieldBackground,
+              },
+            ]}
+            value={apiKey}
+          />
+        )}
+
+        <Pressable
+          disabled={isLoading || isSaving}
+          onPress={() => void save()}
+          style={({ pressed }) => pressed && styles.pressed}>
+          {isSaving ? (
+            <ActivityIndicator />
           ) : (
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setApiKey}
-              placeholder="Paste API key"
-              placeholderTextColor={colors.tertiaryLabel}
-              secureTextEntry
-              selectionColor={colors.green}
-              style={[
-                styles.input,
-                { color: colors.label, borderColor: colors.tertiaryLabel },
-              ]}
-              value={apiKey}
-            />
+            <Text style={[styles.saveText, { color: colors.blue }]}>Save</Text>
           )}
-
-          <Pressable
-            disabled={isLoading || isSaving}
-            onPress={() => void save()}
-            style={({ pressed }) => [
-              styles.saveButton,
-              { backgroundColor: colors.green },
-              pressed && styles.pressed,
-            ]}>
-            {isSaving ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.saveText}>Save connection</Text>
-            )}
-          </Pressable>
-        </AdaptiveGlass>
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -98,22 +90,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    gap: 16,
-    padding: 18,
-  },
-  card: {
-    borderCurve: 'continuous',
-    borderRadius: 28,
     gap: 24,
-    overflow: 'hidden',
-    padding: 22,
-  },
-  copy: {
-    gap: 8,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
+    padding: 20,
   },
   description: {
     fontSize: 15,
@@ -121,28 +99,16 @@ const styles = StyleSheet.create({
   },
   input: {
     borderCurve: 'continuous',
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
     fontFamily: 'ui-monospace',
     fontSize: 15,
-    minHeight: 50,
+    minHeight: 44,
     paddingHorizontal: 14,
   },
-  saveButton: {
-    alignItems: 'center',
-    borderCurve: 'continuous',
-    borderRadius: 14,
-    minHeight: 50,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
   saveText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
   },
   pressed: {
     opacity: 0.72,
   },
 });
-
