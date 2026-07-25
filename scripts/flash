@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  echo "Usage: $0 c3-aranet-bridge [--no-monitor]" >&2
+  exit 2
+}
+
+[ "$#" -ge 1 ] || usage
+project_name=$1
+shift
+
+monitor=1
+if [ "${1:-}" = "--no-monitor" ]; then
+  monitor=0
+  shift
+fi
+[ "$#" -eq 0 ] || usage
+
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+project_dir="$repo_dir/firmware/$project_name"
+[ -f "$project_dir/platformio.ini" ] || {
+  echo "Unknown firmware project: $project_name" >&2
+  exit 2
+}
+
+venv_dir="$repo_dir/.venv"
+if [ ! -x "$venv_dir/bin/pio" ]; then
+  python3 -m venv "$venv_dir"
+  "$venv_dir/bin/python" -m pip install --quiet --upgrade pip
+  "$venv_dir/bin/python" -m pip install --quiet "platformio==6.1.18"
+fi
+
+port=${PORT:-}
+if [ -z "$port" ]; then
+  set -- /dev/cu.usbmodem*
+  [ -e "$1" ] || {
+    echo "No /dev/cu.usbmodem* device found. Set PORT explicitly." >&2
+    exit 1
+  }
+  [ "$#" -eq 1 ] || {
+    echo "Multiple USB modem devices found. Set PORT explicitly:" >&2
+    printf '  %s\n' "$@" >&2
+    exit 1
+  }
+  port=$1
+fi
+
+echo "Flashing $project_name on $port"
+"$venv_dir/bin/pio" run --project-dir "$project_dir" \
+  --target upload --upload-port "$port"
+
+if [ "$monitor" -eq 1 ]; then
+  echo "Opening serial monitor; press Ctrl-C to exit."
+  exec "$venv_dir/bin/pio" device monitor --port "$port" --baud 115200
+fi
+
