@@ -56,14 +56,50 @@ class ProtectionDecisionTests(unittest.TestCase):
             "stop",
         )
 
-    def test_command_cooldown_prevents_rapid_restart(self):
-        climate = {"active": False, "last_command_at_unix": 900}
+    def test_restarts_shortly_after_confirmed_stop(self):
+        climate = {
+            "active": False,
+            "last_action": "stop",
+            "last_succeeded": True,
+            "last_completed_at_unix": 990,
+        }
         self.assertIsNone(
             decide(True, temperature_f=110, climate=climate, now_unix=1_000)
         )
         self.assertEqual(
-            decide(True, temperature_f=110, climate=climate, now_unix=1_501),
+            decide(True, temperature_f=110, climate=climate, now_unix=1_021),
             "start",
+        )
+
+    def test_failed_start_uses_longer_backoff(self):
+        climate = {
+            "active": False,
+            "last_action": "start",
+            "last_succeeded": False,
+            "last_completed_at_unix": 900,
+        }
+        self.assertIsNone(
+            decide(True, temperature_f=110, climate=climate, now_unix=1_000)
+        )
+        self.assertEqual(
+            decide(True, temperature_f=110, climate=climate, now_unix=1_201),
+            "start",
+        )
+
+    def test_failed_stop_retries_after_short_delay(self):
+        climate = {
+            "active": True,
+            "started_at_unix": 100,
+            "last_action": "stop",
+            "last_succeeded": False,
+            "last_completed_at_unix": 990,
+        }
+        self.assertIsNone(
+            decide(True, temperature_f=110, climate=climate, now_unix=1_000)
+        )
+        self.assertEqual(
+            decide(True, temperature_f=110, climate=climate, now_unix=1_021),
+            "stop",
         )
 
 

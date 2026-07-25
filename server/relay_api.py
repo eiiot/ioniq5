@@ -287,7 +287,7 @@ class ClimateController:
                 env=environment,
                 capture_output=True,
                 text=True,
-                timeout=90,
+                timeout=150,
                 check=False,
             )
             succeeded = completed.returncode == 0

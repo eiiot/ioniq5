@@ -27,7 +27,7 @@ const client = new BlueLinky({
 const timeout = setTimeout(() => {
   console.error("Bluelink command timed out");
   process.exit(2);
-}, 75_000);
+}, 140_000);
 
 client.once("error", (error) => {
   clearTimeout(timeout);
@@ -107,7 +107,52 @@ async function sendHyundaiUsEvClimate(vehicle, command) {
       `Hyundai API ${response.status}: ${responseBody || response.statusText}`,
     );
   }
-  return { status: response.status, accepted: true };
+  const transactionId =
+    response.headers.get("tmsTid") ||
+    response.headers.get("transactionId") ||
+    response.headers.get("Xid");
+  if (!transactionId) {
+    throw new Error("Hyundai accepted the request without a transaction ID");
+  }
+
+  const statusHeaders = {
+    ...headers,
+    tid: transactionId,
+    login_id: process.env.BL_USER,
+    service_type: "REMOTE_POLL",
+  };
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const statusResponse = await fetch(
+      `${environment.baseUrl}/ac/v2/rmt/getRunningStatus`,
+      { method: "GET", headers: statusHeaders },
+    );
+    const statusBody = await statusResponse.text();
+    if (!statusResponse.ok) {
+      throw new Error(
+        `Hyundai command status ${statusResponse.status}: ${
+          statusBody || statusResponse.statusText
+        }`,
+      );
+    }
+    let commandStatus;
+    try {
+      commandStatus = JSON.parse(statusBody).status;
+    } catch {
+      commandStatus = null;
+    }
+    if (commandStatus === "SUCCESS") {
+      return {
+        status: response.status,
+        transactionId,
+        commandStatus,
+      };
+    }
+    if (commandStatus === "ERROR") {
+      throw new Error("Hyundai reported command failure");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error("Hyundai command confirmation timed out");
 }
 
 client.once("ready", async (vehicles) => {

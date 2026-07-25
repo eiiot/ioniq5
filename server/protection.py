@@ -9,7 +9,9 @@ START_THRESHOLD_F = 105.0
 STOP_TARGET_F = 95.0
 MINIMUM_RUNTIME_SECONDS = 3 * 60
 MAXIMUM_RUNTIME_SECONDS = 10 * 60
-COMMAND_COOLDOWN_SECONDS = 10 * 60
+RESTART_DELAY_SECONDS = 30
+FAILED_START_BACKOFF_SECONDS = 5 * 60
+FAILED_STOP_RETRY_SECONDS = 30
 
 Decision = Literal["start", "stop"] | None
 
@@ -24,6 +26,16 @@ def decide(
 ) -> Decision:
     active = climate.get("active") is True
     if active:
+        if (
+            climate.get("last_action") == "stop"
+            and climate.get("last_succeeded") is False
+            and isinstance(
+                climate.get("last_completed_at_unix"), (int, float)
+            )
+            and now_unix - climate["last_completed_at_unix"]
+            < FAILED_STOP_RETRY_SECONDS
+        ):
+            return None
         if not enabled:
             return "stop"
         started_at = climate.get("started_at_unix")
@@ -38,10 +50,19 @@ def decide(
 
     if not enabled or temperature_f < threshold_f:
         return None
-    last_command_at = climate.get("last_command_at_unix")
+    last_completed_at = climate.get("last_completed_at_unix")
     if (
-        isinstance(last_command_at, (int, float))
-        and now_unix - last_command_at < COMMAND_COOLDOWN_SECONDS
+        climate.get("last_action") == "stop"
+        and climate.get("last_succeeded") is True
+        and isinstance(last_completed_at, (int, float))
+        and now_unix - last_completed_at < RESTART_DELAY_SECONDS
+    ):
+        return None
+    if (
+        climate.get("last_action") == "start"
+        and climate.get("last_succeeded") is False
+        and isinstance(last_completed_at, (int, float))
+        and now_unix - last_completed_at < FAILED_START_BACKOFF_SECONDS
     ):
         return None
     return "start"
