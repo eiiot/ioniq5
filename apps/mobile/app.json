@@ -10,7 +10,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "sh.eliot.ioniq5",
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
