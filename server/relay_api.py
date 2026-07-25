@@ -11,9 +11,15 @@ import json
 import os
 from pathlib import Path
 import secrets
+import subprocess
 import threading
 import time
 from typing import Any
+
+try:
+    from server.protection import decide
+except ModuleNotFoundError:
+    from protection import decide
 
 
 MAX_REQUEST_BYTES = 16 * 1024
@@ -94,6 +100,61 @@ class RelayStore:
             self._write(state)
             return self._config(state)
 
+    def protection_snapshot(self) -> dict[str, Any]:
+        with self.lock:
+            state = self._read()
+            return {
+                "automation": self._config(state),
+                "cabin": state.get("cabin"),
+                "climate": state.get("climate")
+                if isinstance(state.get("climate"), dict)
+                else {},
+            }
+
+    def claim_climate_command(self, action: str, now_unix: float) -> bool:
+        with self.lock:
+            state = self._read()
+            climate = state.get("climate")
+            if not isinstance(climate, dict):
+                climate = {}
+            if climate.get("pending") is not None:
+                return False
+            climate["pending"] = action
+            climate["last_command_at_unix"] = now_unix
+            state["climate"] = climate
+            self._write(state)
+            return True
+
+    def complete_climate_command(
+        self,
+        action: str,
+        succeeded: bool,
+        now_unix: float,
+        error: str | None = None,
+    ) -> None:
+        with self.lock:
+            state = self._read()
+            climate = state.get("climate")
+            if not isinstance(climate, dict):
+                climate = {}
+            climate["pending"] = None
+            climate["last_action"] = action
+            climate["last_succeeded"] = succeeded
+            climate["last_completed_at_unix"] = now_unix
+            climate["last_error"] = error
+            if succeeded:
+                climate["active"] = action == "start"
+                if action == "start":
+                    climate["started_at_unix"] = now_unix
+            state["climate"] = climate
+            state["last_climate_request"] = {
+                "action": action,
+                "succeeded": succeeded,
+                "completed_at_unix": now_unix,
+                "error": error,
+            }
+            self._write(state)
+
     def status(self, now_unix: float | None = None) -> dict[str, Any]:
         now = time.time() if now_unix is None else now_unix
         with self.lock:
@@ -110,8 +171,87 @@ class RelayStore:
                 "automation": self._config(state),
                 "cabin": cabin,
                 "connected": connected,
+                "climate": state.get("climate")
+                if isinstance(state.get("climate"), dict)
+                else {},
                 "last_climate_request": state.get("last_climate_request"),
             }
+
+
+class ClimateController:
+    def __init__(
+        self,
+        store: RelayStore,
+        command: list[str],
+        credentials_path: Path,
+        commands_enabled: bool,
+    ):
+        self.store = store
+        self.command = command
+        self.credentials_path = credentials_path
+        self.commands_enabled = commands_enabled
+
+    def evaluate(self, now_unix: float | None = None) -> str | None:
+        now = time.time() if now_unix is None else now_unix
+        snapshot = self.store.protection_snapshot()
+        cabin = snapshot["cabin"]
+        if not isinstance(cabin, dict):
+            return None
+        temperature_c = cabin.get("temperature_c")
+        if not isinstance(temperature_c, (int, float)):
+            return None
+        config = snapshot["automation"]
+        action = decide(
+            config["enabled"],
+            temperature_c * 9 / 5 + 32,
+            snapshot["climate"],
+            now,
+            threshold_f=config["threshold_f"],
+        )
+        if action is None or not self.commands_enabled:
+            return action
+        if not self.store.claim_climate_command(action, now):
+            return None
+        threading.Thread(
+            target=self._run,
+            args=(action,),
+            name=f"bluelink-{action}",
+            daemon=True,
+        ).start()
+        return action
+
+    def _run(self, action: str) -> None:
+        try:
+            credentials = json.loads(
+                self.credentials_path.read_text(encoding="utf-8")
+            )
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "BL_USER": credentials["username"],
+                    "BL_PASS": credentials["password"],
+                    "BL_REGION": credentials["region"],
+                }
+            )
+            completed = subprocess.run(
+                [*self.command, action],
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=90,
+                check=False,
+            )
+            succeeded = completed.returncode == 0
+            error = None
+            if not succeeded:
+                error = (completed.stderr.strip().splitlines() or ["failed"])[-1]
+                error = error[:300]
+        except (OSError, KeyError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
+            succeeded = False
+            error = str(exc)[:300]
+        self.store.complete_climate_command(
+            action, succeeded, time.time(), error
+        )
 
 
 class RelayHandler(BaseHTTPRequestHandler):
@@ -183,6 +323,7 @@ class RelayHandler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
+        self.app.controller.evaluate()
         self.send_json(HTTPStatus.OK, self.app.store.status())
 
     def do_POST(self) -> None:
@@ -196,6 +337,7 @@ class RelayHandler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
+        self.app.controller.evaluate()
         self.send_json(HTTPStatus.OK, {"automation": config})
 
     def log_message(self, message_format: str, *arguments: Any) -> None:
@@ -211,10 +353,12 @@ class RelayServer(ThreadingHTTPServer):
         address: tuple[str, int],
         api_key: str,
         store: RelayStore,
+        controller: ClimateController,
     ):
         super().__init__(address, RelayHandler)
         self.api_key = api_key
         self.store = store
+        self.controller = controller
 
 
 def main() -> None:
@@ -224,6 +368,8 @@ def main() -> None:
     parser.add_argument("--api-key-path", type=Path, required=True)
     parser.add_argument("--state-path", type=Path, required=True)
     parser.add_argument("--init-api-key", action="store_true")
+    parser.add_argument("--bluelink-credentials-path", type=Path, required=True)
+    parser.add_argument("--climate-commands-enabled", action="store_true")
     arguments = parser.parse_args()
 
     if arguments.init_api_key:
@@ -242,10 +388,18 @@ def main() -> None:
     api_key = arguments.api_key_path.read_text(encoding="utf-8").strip()
     if len(api_key) < 32:
         raise SystemExit("API key is missing or too short")
+    store = RelayStore(arguments.state_path)
+    controller = ClimateController(
+        store,
+        ["node", str(Path(__file__).with_name("bluelink-cli.cjs"))],
+        arguments.bluelink_credentials_path,
+        arguments.climate_commands_enabled,
+    )
     server = RelayServer(
         (arguments.host, arguments.port),
         api_key,
-        RelayStore(arguments.state_path),
+        store,
+        controller,
     )
     print(
         f"relay-api: listening on http://{arguments.host}:{arguments.port}",

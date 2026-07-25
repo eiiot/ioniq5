@@ -1,0 +1,8 @@
+{
+  "name": "@ioniq5/server",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "bluelinky": "10.0.0"
+  }
+}

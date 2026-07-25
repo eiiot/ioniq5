@@ -17,6 +17,7 @@ class RelayStoreTests(unittest.TestCase):
                     "automation": {"enabled": False, "threshold_f": 105.0},
                     "cabin": None,
                     "connected": False,
+                    "climate": {},
                     "last_climate_request": None,
                 },
             )

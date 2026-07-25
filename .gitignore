@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 .pio/
 firmware/*/.pio/
+node_modules/
