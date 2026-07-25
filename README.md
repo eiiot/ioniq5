@@ -7,6 +7,10 @@ Ioniq 5.
 
 - [`firmware/c3-aranet-bridge`](firmware/c3-aranet-bridge): streams Aranet4
   readings over the ESP32-C3 native USB serial connection.
+- [`apps/mobile`](apps/mobile): Expo app for cabin status and automation
+  controls.
+- [`comma/services`](comma/services): USB telemetry reader and authenticated
+  localhost control API.
 
 ## Quick start
 
@@ -23,4 +27,3 @@ override automatic `/dev/cu.usbmodem*` detection:
 ```sh
 PORT=/dev/cu.usbmodem2101 ./scripts/flash c3-aranet-bridge
 ```
-
