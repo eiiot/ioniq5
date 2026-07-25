@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { router, Stack } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -18,8 +19,8 @@ function celsiusToFahrenheit(celsius: number) {
   return (celsius * 9) / 5 + 32;
 }
 
-function relativeTime(unixSeconds: number) {
-  const ageSeconds = Math.max(0, Math.round(Date.now() / 1000 - unixSeconds));
+function relativeTime(unixSeconds: number, nowUnixSeconds: number) {
+  const ageSeconds = Math.max(0, Math.floor(nowUnixSeconds - unixSeconds));
   if (ageSeconds < 5) return 'Now';
   if (ageSeconds < 60) return `${ageSeconds} sec ago`;
   return `${Math.round(ageSeconds / 60)} min ago`;
@@ -27,6 +28,7 @@ function relativeTime(unixSeconds: number) {
 
 export function HomeScreen() {
   useColorScheme();
+  const [nowUnixSeconds, setNowUnixSeconds] = useState<number | null>(null);
   const {
     apiKeyConfigured,
     error,
@@ -35,6 +37,21 @@ export function HomeScreen() {
     setEnabled,
     status,
   } = useVehicleStatus();
+
+  useEffect(() => {
+    const initialTick = setTimeout(
+      () => setNowUnixSeconds(Date.now() / 1000),
+      0,
+    );
+    const interval = setInterval(
+      () => setNowUnixSeconds(Date.now() / 1000),
+      1_000,
+    );
+    return () => {
+      clearTimeout(initialTick);
+      clearInterval(interval);
+    };
+  }, []);
 
   const cabinTemperature = status?.cabin
     ? celsiusToFahrenheit(status.cabin.temperature_c)
@@ -99,7 +116,11 @@ export function HomeScreen() {
           </Text>
           {status?.cabin ? (
             <Text style={[styles.tertiary, { color: colors.tertiaryLabel }]}>
-              Updated {relativeTime(status.cabin.received_at_unix)}
+              Updated{' '}
+              {relativeTime(
+                status.cabin.received_at_unix,
+                nowUnixSeconds ?? status.cabin.received_at_unix,
+              )}
             </Text>
           ) : null}
         </View>
