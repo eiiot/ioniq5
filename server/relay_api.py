@@ -26,10 +26,29 @@ MAX_REQUEST_BYTES = 16 * 1024
 READING_FRESHNESS_SECONDS = 120
 
 
-class RelayStore:
+class EventLog:
     def __init__(self, path: Path):
         self.path = path
         self.lock = threading.Lock()
+
+    def write(self, event: str, **details: Any) -> None:
+        record = {
+            "at_unix": time.time(),
+            "event": event,
+            **details,
+        }
+        encoded = json.dumps(record, separators=(",", ":")) + "\n"
+        with self.lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as output:
+                output.write(encoded)
+
+
+class RelayStore:
+    def __init__(self, path: Path, event_log: EventLog | None = None):
+        self.path = path
+        self.lock = threading.Lock()
+        self.event_log = event_log
 
     def _read(self) -> dict[str, Any]:
         try:
@@ -80,6 +99,8 @@ class RelayStore:
                 config["threshold_f"] = float(threshold)
             state["automation"] = config
             self._write(state)
+            if self.event_log is not None:
+                self.event_log.write("config_changed", automation=config)
             return config
 
     def put_telemetry(
@@ -98,6 +119,13 @@ class RelayStore:
             state = self._read()
             state["cabin"] = cabin
             self._write(state)
+            if self.event_log is not None:
+                self.event_log.write(
+                    "temperature_received",
+                    temperature_c=temperature,
+                    counter=reading.get("counter"),
+                    source_recorded_at_unix=reading.get("host_received_at_unix"),
+                )
             return self._config(state)
 
     def protection_snapshot(self) -> dict[str, Any]:
@@ -123,6 +151,8 @@ class RelayStore:
             climate["last_command_at_unix"] = now_unix
             state["climate"] = climate
             self._write(state)
+            if self.event_log is not None:
+                self.event_log.write("climate_command_claimed", action=action)
             return True
 
     def complete_climate_command(
@@ -154,6 +184,13 @@ class RelayStore:
                 "error": error,
             }
             self._write(state)
+            if self.event_log is not None:
+                self.event_log.write(
+                    "climate_command_completed",
+                    action=action,
+                    succeeded=succeeded,
+                    error=error,
+                )
 
     def status(self, now_unix: float | None = None) -> dict[str, Any]:
         now = time.time() if now_unix is None else now_unix
@@ -210,6 +247,13 @@ class ClimateController:
         )
         if action is None or not self.commands_enabled:
             return action
+        if self.store.event_log is not None:
+            self.store.event_log.write(
+                "protection_decision",
+                action=action,
+                temperature_f=temperature_c * 9 / 5 + 32,
+                threshold_f=config["threshold_f"],
+            )
         if not self.store.claim_climate_command(action, now):
             return None
         threading.Thread(
@@ -221,6 +265,10 @@ class ClimateController:
         return action
 
     def _run(self, action: str) -> None:
+        if self.store.event_log is not None:
+            self.store.event_log.write(
+                "bluelink_request_started", action=action
+            )
         try:
             credentials = json.loads(
                 self.credentials_path.read_text(encoding="utf-8")
@@ -369,6 +417,7 @@ def main() -> None:
     parser.add_argument("--state-path", type=Path, required=True)
     parser.add_argument("--init-api-key", action="store_true")
     parser.add_argument("--bluelink-credentials-path", type=Path, required=True)
+    parser.add_argument("--event-log-path", type=Path)
     parser.add_argument("--climate-commands-enabled", action="store_true")
     arguments = parser.parse_args()
 
@@ -388,7 +437,12 @@ def main() -> None:
     api_key = arguments.api_key_path.read_text(encoding="utf-8").strip()
     if len(api_key) < 32:
         raise SystemExit("API key is missing or too short")
-    store = RelayStore(arguments.state_path)
+    event_log = (
+        EventLog(arguments.event_log_path)
+        if arguments.event_log_path is not None
+        else None
+    )
+    store = RelayStore(arguments.state_path, event_log)
     controller = ClimateController(
         store,
         ["node", str(Path(__file__).with_name("bluelink-cli.cjs"))],
