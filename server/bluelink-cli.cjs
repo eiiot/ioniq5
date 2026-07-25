@@ -35,6 +35,81 @@ client.once("error", (error) => {
   process.exit(1);
 });
 
+function payloadTimestamp() {
+  const now = new Date();
+  const part = (value) => String(value).padStart(2, "0");
+  return [
+    now.getUTCFullYear(),
+    part(now.getUTCMonth() + 1),
+    part(now.getUTCDate()),
+    part(now.getUTCHours()),
+    part(now.getUTCMinutes()),
+    part(now.getUTCSeconds()),
+  ].join("");
+}
+
+async function sendHyundaiUsEvClimate(vehicle, command) {
+  const controller = vehicle.controller;
+  await controller.refreshAccessToken();
+  const config = vehicle.vehicleConfig;
+  const environment = controller.environment;
+  const vin = vehicle.vin();
+  const headers = {
+    client_id: environment.clientId,
+    clientSecret: environment.clientSecret,
+    Host: environment.host,
+    "User-Agent": "okhttp/3.12.0",
+    "Content-Type": "application/json",
+    Accept: "application/json, text/plain, */*",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "en-US,en;q=0.9",
+    Connection: "Keep-Alive",
+    accessToken: controller.session.accessToken,
+    language: "0",
+    to: "ISS",
+    encryptFlag: "false",
+    from: "SPA",
+    offset: "-5",
+    brandIndicator: config.brandIndicator || "H",
+    origin: `https://${environment.host}`,
+    referer: `https://${environment.host}/login`,
+    username: process.env.BL_USER,
+    blueLinkServicePin: process.env.BL_PIN,
+    refresh: "false",
+    gen: String(config.generation),
+    registrationId: config.regId,
+    vin,
+    "APPCLOUD-VIN": vin,
+    payloadGenerated: payloadTimestamp(),
+    includeNonConnectedVehicles: "Y",
+  };
+  const path =
+    command === "start"
+      ? "/ac/v2/evc/fatc/start"
+      : "/ac/v2/evc/fatc/stop";
+  const body =
+    command === "start"
+      ? {
+          airCtrl: 1,
+          airTemp: { value: "72", unit: 1 },
+          defrost: false,
+          heating1: 0,
+        }
+      : {};
+  const response = await fetch(`${environment.baseUrl}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  const responseBody = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Hyundai API ${response.status}: ${responseBody || response.statusText}`,
+    );
+  }
+  return { status: response.status, accepted: true };
+}
+
 client.once("ready", async (vehicles) => {
   try {
     if (vehicles.length !== 1) {
@@ -43,16 +118,9 @@ client.once("ready", async (vehicles) => {
     const vehicle = vehicles[0];
     let result;
     if (action === "start") {
-      result = await vehicle.start({
-        hvac: true,
-        temperature: 72,
-        unit: "F",
-        duration: 10,
-        defrost: false,
-        heatedFeatures: 0,
-      });
+      result = await sendHyundaiUsEvClimate(vehicle, "start");
     } else if (action === "stop") {
-      result = await vehicle.stop();
+      result = await sendHyundaiUsEvClimate(vehicle, "stop");
     } else {
       const status = await vehicle.status({ refresh: false, parsed: true });
       result = {
