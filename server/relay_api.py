@@ -279,6 +279,7 @@ class ClimateController:
                     "BL_USER": credentials["username"],
                     "BL_PASS": credentials["password"],
                     "BL_REGION": credentials["region"],
+                    "BL_PIN": credentials["pin"],
                 }
             )
             completed = subprocess.run(
