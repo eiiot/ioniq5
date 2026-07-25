@@ -46,6 +46,7 @@ class RelayClient:
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                "User-Agent": "ioniq5-comma/1",
             },
         )
         with urlopen(request, timeout=15) as response:
