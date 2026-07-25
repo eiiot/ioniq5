@@ -43,3 +43,19 @@ python3 comma/services/control_api.py
 
 The API binds only to `127.0.0.1:8787`. Every control/status endpoint requires
 `Authorization: Bearer <key>`; `/health` is the only unauthenticated endpoint.
+
+## Hosted relay sync
+
+`relay_sync.py` uses outbound HTTPS only. It pulls the desired automation
+configuration from `https://ioniq5-api.tuft.host`, saves it to
+`/data/ioniq5/state/config.json`, and pushes each new Aranet reading to the
+relay for the mobile app.
+
+It reuses the API key created above:
+
+```sh
+python3 comma/services/relay_sync.py
+```
+
+The sync loop checks configuration every 15 seconds and backs off to at most
+60 seconds when the network is unavailable.

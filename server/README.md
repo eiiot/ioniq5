@@ -1,0 +1,21 @@
+# Hosted relay
+
+The relay lets both the app and comma make outbound HTTPS requests instead of
+opening an inbound tunnel to the car.
+
+Endpoints:
+
+- `GET /health`
+- `GET /v1/status`
+- `GET /v1/config`
+- `PATCH /v1/config`
+- `POST /v1/telemetry`
+
+All `/v1/*` endpoints require the same bearer key. Run the server with private
+paths for the key and persisted state:
+
+```sh
+python3 server/relay_api.py \
+  --api-key-path /private/api.key \
+  --state-path /private/state.json
+```
