@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "Usage: $0 c3-aranet-bridge [--no-monitor]" >&2
+  echo "Usage: $0 FIRMWARE_PROJECT [--no-monitor]" >&2
   exit 2
 }
 
@@ -33,9 +33,12 @@ fi
 
 port=${PORT:-}
 if [ -z "$port" ]; then
-  set -- /dev/cu.usbmodem*
-  [ -e "$1" ] || {
-    echo "No /dev/cu.usbmodem* device found. Set PORT explicitly." >&2
+  set -- /dev/cu.usbmodem* /dev/cu.usbserial*
+  while [ "$#" -gt 0 ] && [ ! -e "$1" ]; do
+    shift
+  done
+  [ "$#" -gt 0 ] || {
+    echo "No USB serial device found. Set PORT explicitly." >&2
     exit 1
   }
   [ "$#" -eq 1 ] || {
@@ -54,4 +57,3 @@ if [ "$monitor" -eq 1 ]; then
   echo "Opening serial monitor; press Ctrl-C to exit."
   exec "$venv_dir/bin/pio" device monitor --port "$port" --baud 115200
 fi
-

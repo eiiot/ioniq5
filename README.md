@@ -7,6 +7,8 @@ Ioniq 5.
 
 - [`firmware/c3-aranet-bridge`](firmware/c3-aranet-bridge): streams Aranet4
   readings over the ESP32-C3 native USB serial connection.
+- [`firmware/wireless-paper-soc`](firmware/wireless-paper-soc): shows vehicle
+  state of charge on a Heltec Wireless Paper over USB serial or BLE.
 - [`apps/mobile`](apps/mobile): Expo app for cabin status and automation
   controls.
 - [`comma/services`](comma/services): USB telemetry reader and authenticated

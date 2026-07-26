@@ -128,6 +128,32 @@ class RelayStore:
                 )
             return self._config(state)
 
+    def put_vehicle_status(
+        self, vehicle: dict[str, Any], received_at_unix: float | None = None
+    ) -> None:
+        soc = vehicle.get("soc_pct")
+        if (
+            not isinstance(soc, (int, float))
+            or isinstance(soc, bool)
+            or not 0 <= soc <= 100
+        ):
+            raise ValueError("soc_pct must be between 0 and 100")
+        stored = dict(vehicle)
+        stored["soc_pct"] = int(round(soc))
+        stored["received_at_unix"] = (
+            time.time() if received_at_unix is None else received_at_unix
+        )
+        with self.lock:
+            state = self._read()
+            state["vehicle"] = stored
+            self._write(state)
+            if self.event_log is not None:
+                self.event_log.write(
+                    "vehicle_status_received",
+                    soc_pct=stored["soc_pct"],
+                    source_updated_at=stored.get("source_updated_at"),
+                )
+
     def protection_snapshot(self) -> dict[str, Any]:
         with self.lock:
             state = self._read()
@@ -212,6 +238,9 @@ class RelayStore:
                 if isinstance(state.get("climate"), dict)
                 else {},
                 "last_climate_request": state.get("last_climate_request"),
+                "vehicle": state.get("vehicle")
+                if isinstance(state.get("vehicle"), dict)
+                else None,
             }
 
 
@@ -301,6 +330,74 @@ class ClimateController:
         self.store.complete_climate_command(
             action, succeeded, time.time(), error
         )
+
+
+class VehicleStatusPoller:
+    def __init__(
+        self,
+        store: RelayStore,
+        command: list[str],
+        credentials_path: Path,
+        interval_seconds: float,
+    ):
+        self.store = store
+        self.command = command
+        self.credentials_path = credentials_path
+        self.interval_seconds = interval_seconds
+
+    def poll_once(self) -> None:
+        credentials = json.loads(
+            self.credentials_path.read_text(encoding="utf-8")
+        )
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "BL_USER": credentials["username"],
+                "BL_PASS": credentials["password"],
+                "BL_REGION": credentials["region"],
+                "BL_PIN": credentials["pin"],
+            }
+        )
+        completed = subprocess.run(
+            [*self.command, "status"],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=150,
+            check=False,
+        )
+        if completed.returncode != 0:
+            error = (completed.stderr.strip().splitlines() or ["failed"])[-1]
+            raise RuntimeError(error[:300])
+        response = json.loads(completed.stdout)
+        result = response.get("result")
+        if not isinstance(result, dict):
+            raise ValueError("Bluelink status response is missing result")
+        self.store.put_vehicle_status(
+            {
+                "soc_pct": result.get("batteryChargeHV"),
+                "source_updated_at": result.get("lastUpdate"),
+                "source": "bluelink",
+            }
+        )
+
+    def run(self) -> None:
+        while True:
+            try:
+                self.poll_once()
+            except (
+                OSError,
+                KeyError,
+                ValueError,
+                RuntimeError,
+                json.JSONDecodeError,
+                subprocess.TimeoutExpired,
+            ) as error:
+                if self.store.event_log is not None:
+                    self.store.event_log.write(
+                        "vehicle_status_failed", error=str(error)[:300]
+                    )
+            time.sleep(self.interval_seconds)
 
 
 class RelayHandler(BaseHTTPRequestHandler):
@@ -420,6 +517,7 @@ def main() -> None:
     parser.add_argument("--bluelink-credentials-path", type=Path, required=True)
     parser.add_argument("--event-log-path", type=Path)
     parser.add_argument("--climate-commands-enabled", action="store_true")
+    parser.add_argument("--vehicle-status-interval", type=float, default=300)
     arguments = parser.parse_args()
 
     if arguments.init_api_key:
@@ -450,6 +548,17 @@ def main() -> None:
         arguments.bluelink_credentials_path,
         arguments.climate_commands_enabled,
     )
+    vehicle_status_poller = VehicleStatusPoller(
+        store,
+        ["node", str(Path(__file__).with_name("bluelink-cli.cjs"))],
+        arguments.bluelink_credentials_path,
+        max(arguments.vehicle_status_interval, 60),
+    )
+    threading.Thread(
+        target=vehicle_status_poller.run,
+        name="bluelink-vehicle-status",
+        daemon=True,
+    ).start()
     server = RelayServer(
         (arguments.host, arguments.port),
         api_key,
