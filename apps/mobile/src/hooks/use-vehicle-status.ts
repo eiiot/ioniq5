@@ -1,5 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import {
   api,
@@ -72,6 +73,14 @@ export function useVehicleStatus() {
     if (!apiKey) return;
     const interval = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
+  }, [apiKey, refresh]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void refresh();
+    });
+    return () => subscription.remove();
   }, [apiKey, refresh]);
 
   const setEnabled = useCallback(
