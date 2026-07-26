@@ -227,13 +227,16 @@ bool fetchSoc() {
   }
 
   DynamicJsonDocument document(4096);
+  const String responseBody = request.getString();
   const DeserializationError error =
-      deserializeJson(document, request.getStream());
+      deserializeJson(document, responseBody);
   request.end();
   JsonVariant socValue = document["vehicle"]["soc_pct"];
   if (error != DeserializationError::Ok || socValue.isNull()) {
-    Serial.println(
-        "{\"event\":\"soc_fetch_failed\",\"error\":\"invalid response\"}");
+    Serial.printf(
+        "{\"event\":\"soc_fetch_failed\",\"error\":\"%s\","
+        "\"body_length\":%u}\n",
+        error.c_str(), responseBody.length());
     return false;
   }
   const int socPercent = socValue.as<int>();
