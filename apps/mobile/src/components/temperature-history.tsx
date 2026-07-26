@@ -77,19 +77,19 @@ export function TemperatureHistory({
           const deltaX = point.x - previous.x;
           const deltaY = point.y - previous.y;
           const length = Math.sqrt(deltaX ** 2 + deltaY ** 2);
+          const strokeLength = length + 2;
           const angle = Math.atan2(deltaY, deltaX);
           return (
             <View
               key={`${points[index + 1].at_unix}`}
               style={{
                 backgroundColor: colors.blue,
-                borderRadius: 1,
                 height: 2,
-                left: (previous.x + point.x - length) / 2,
+                left: (previous.x + point.x - strokeLength) / 2,
                 position: 'absolute',
                 top: (previous.y + point.y - 2) / 2,
                 transform: [{ rotate: `${angle}rad` }],
-                width: length,
+                width: strokeLength,
               }}
             />
           );
