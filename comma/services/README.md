@@ -23,8 +23,22 @@ python3 comma/services/aranet_bridge.py \
   --latest-path /tmp/ioniq5/aranet-latest.json
 ```
 
-This is currently a foreground development service. Process-manager integration
-will be added after parked-awake behavior is measured.
+## Combined cabin agent
+
+`cabin_agent.py` runs the USB reader and hosted relay sync in one process. Run
+it in a named tmux session so it survives SSH disconnects:
+
+```sh
+tmux new-session -d -s ioniq5 \
+  'cd /data/ioniq5 && exec python3 comma/services/cabin_agent.py'
+```
+
+Inspect its output or stop it with:
+
+```sh
+tmux attach -t ioniq5
+tmux kill-session -t ioniq5
+```
 
 ## Control API
 

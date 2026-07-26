@@ -82,6 +82,32 @@ def sync_once(
     return fingerprint
 
 
+def run(
+    server_url: str = DEFAULT_SERVER_URL,
+    api_key_path: Path = DEFAULT_API_KEY_PATH,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    latest_path: Path = DEFAULT_LATEST_PATH,
+    interval: float = 15,
+) -> None:
+    api_key = api_key_path.read_text(encoding="utf-8").strip()
+    client = RelayClient(server_url, api_key)
+    fingerprint = None
+    delay = interval
+    while True:
+        try:
+            fingerprint = sync_once(
+                client,
+                latest_path=latest_path,
+                config_path=config_path,
+                previous_fingerprint=fingerprint,
+            )
+            delay = interval
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+            print(f"relay-sync: {error}; retrying", flush=True)
+            delay = min(max(delay * 2, 5), 60)
+        time.sleep(delay)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--server-url", default=DEFAULT_SERVER_URL)
@@ -90,24 +116,13 @@ def main() -> None:
     parser.add_argument("--latest-path", type=Path, default=DEFAULT_LATEST_PATH)
     parser.add_argument("--interval", type=float, default=15)
     arguments = parser.parse_args()
-
-    api_key = arguments.api_key_path.read_text(encoding="utf-8").strip()
-    client = RelayClient(arguments.server_url, api_key)
-    fingerprint = None
-    delay = arguments.interval
-    while True:
-        try:
-            fingerprint = sync_once(
-                client,
-                latest_path=arguments.latest_path,
-                config_path=arguments.config_path,
-                previous_fingerprint=fingerprint,
-            )
-            delay = arguments.interval
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
-            print(f"relay-sync: {error}; retrying", flush=True)
-            delay = min(max(delay * 2, 5), 60)
-        time.sleep(delay)
+    run(
+        server_url=arguments.server_url,
+        api_key_path=arguments.api_key_path,
+        config_path=arguments.config_path,
+        latest_path=arguments.latest_path,
+        interval=arguments.interval,
+    )
 
 
 if __name__ == "__main__":
