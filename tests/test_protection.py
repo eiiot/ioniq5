@@ -71,6 +71,21 @@ class ProtectionDecisionTests(unittest.TestCase):
             "start",
         )
 
+    def test_continues_cooling_above_target_after_session_ends(self):
+        climate = {
+            "active": False,
+            "last_action": "stop",
+            "last_succeeded": True,
+            "last_completed_at_unix": 900,
+        }
+        self.assertEqual(
+            decide(True, temperature_f=100, climate=climate, now_unix=1_000),
+            "start",
+        )
+        self.assertIsNone(
+            decide(True, temperature_f=95, climate=climate, now_unix=1_000)
+        )
+
     def test_failed_start_uses_longer_backoff(self):
         climate = {
             "active": False,

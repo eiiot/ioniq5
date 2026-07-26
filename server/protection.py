@@ -48,13 +48,21 @@ def decide(
             return "stop"
         return None
 
-    if not enabled or temperature_f < threshold_f:
+    if not enabled:
         return None
     last_completed_at = climate.get("last_completed_at_unix")
-    if (
+    continuing_after_stop = (
         climate.get("last_action") == "stop"
         and climate.get("last_succeeded") is True
         and isinstance(last_completed_at, (int, float))
+    )
+    if (
+        temperature_f < threshold_f
+        and not (continuing_after_stop and temperature_f > target_f)
+    ):
+        return None
+    if (
+        continuing_after_stop
         and now_unix - last_completed_at < RESTART_DELAY_SECONDS
     ):
         return None
