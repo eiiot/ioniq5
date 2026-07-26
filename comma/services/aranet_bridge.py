@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read newline-delimited Aranet telemetry from an ESP32-C3 over USB."""
+"""Read newline-delimited cabin telemetry from an ESP32-C3 over USB."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def parse_reading(line: str, received_at: float) -> dict[str, Any] | None:
 
     if (
         not isinstance(message, dict)
-        or message.get("type") != "aranet4"
+        or message.get("type") not in {"aranet4", "sht41"}
         or not isinstance(message.get("temperature_c"), (int, float))
     ):
         return None

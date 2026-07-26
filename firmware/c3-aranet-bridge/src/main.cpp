@@ -1,5 +1,7 @@
 #include <Arduino.h>
+#include <Adafruit_SHT4x.h>
 #include <NimBLEDevice.h>
+#include <Wire.h>
 
 #include <cstring>
 #include <string>
@@ -10,6 +12,9 @@ constexpr uint16_t kAranetManufacturerId = 0x0702;
 constexpr uint32_t kScanDurationSeconds = 5;
 constexpr uint32_t kPauseBetweenScansMs = 5000;
 constexpr uint8_t kIntegrationsFlag = 1U << 5;
+constexpr uint8_t kSdaPin = 4;
+constexpr uint8_t kSclPin = 5;
+constexpr uint32_t kSht41IntervalMs = 2000;
 
 struct Aranet4Reading {
   bool integrationsEnabled = false;
@@ -24,6 +29,9 @@ struct Aranet4Reading {
 };
 
 NimBLEScan *scanner = nullptr;
+Adafruit_SHT4x sht41;
+bool sht41Available = false;
+uint32_t sht41Counter = 0;
 
 uint16_t readLittleEndianU16(const uint8_t *bytes) {
   return static_cast<uint16_t>(bytes[0]) |
@@ -102,22 +110,48 @@ void printReading(NimBLEAdvertisedDevice &advertisement,
       reading.counter);
 }
 
+void printSht41Reading() {
+  sensors_event_t humidity;
+  sensors_event_t temperature;
+  sht41.getEvent(&humidity, &temperature);
+  Serial.printf(
+      "{\"type\":\"sht41\",\"temperature_c\":%.2f,"
+      "\"humidity_pct\":%.2f,\"counter\":%lu}\n",
+      temperature.temperature, humidity.relative_humidity,
+      static_cast<unsigned long>(sht41Counter++));
+}
+
 }  // namespace
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  NimBLEDevice::init("");
-  scanner = NimBLEDevice::getScan();
-  scanner->setActiveScan(true);
+  Wire.begin(kSdaPin, kSclPin);
+  sht41Available = sht41.begin(&Wire);
+  if (sht41Available) {
+    sht41.setPrecision(SHT4X_HIGH_PRECISION);
+    sht41.setHeater(SHT4X_NO_HEATER);
+  } else {
+    NimBLEDevice::init("");
+    scanner = NimBLEDevice::getScan();
+    scanner->setActiveScan(true);
+  }
 
-  Serial.println(
-      "{\"event\":\"ready\",\"device\":\"c3-aranet-bridge\","
-      "\"schema_version\":1}");
+  Serial.printf(
+      "{\"event\":\"ready\",\"device\":\"c3-cabin-bridge\","
+      "\"schema_version\":2,\"sht41\":%s,"
+      "\"fallback\":\"aranet4\"}\n",
+      sht41Available ? "true" : "false");
 }
 
 void loop() {
+  if (sht41Available) {
+    printSht41Reading();
+    delay(kSht41IntervalMs);
+    return;
+  }
+
   scanner->start(kScanDurationSeconds, false);
   NimBLEScanResults results = scanner->getResults();
 
