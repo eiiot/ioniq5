@@ -19,6 +19,7 @@ class RelayStoreTests(unittest.TestCase):
                     "connected": False,
                     "climate": {},
                     "last_climate_request": None,
+                    "vehicle": None,
                 },
             )
 
@@ -37,8 +38,17 @@ class RelayStoreTests(unittest.TestCase):
             self.assertEqual(status["cabin"]["received_at_unix"], 110)
             self.assertTrue(status["connected"])
 
+            store.put_vehicle_status(
+                {"soc_pct": 21, "source_updated_at": "2026-07-25T23:35:47Z"},
+                received_at_unix=121,
+            )
+            vehicle = store.status(now_unix=122)["vehicle"]
+            self.assertEqual(vehicle["soc_pct"], 21)
+            self.assertEqual(vehicle["received_at_unix"], 121)
+
             persisted = json.loads((Path(directory) / "state.json").read_text())
             self.assertEqual(persisted["cabin"]["counter"], 7)
+            self.assertEqual(persisted["vehicle"]["soc_pct"], 21)
 
     def test_rejects_invalid_config_and_telemetry(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -47,6 +57,8 @@ class RelayStoreTests(unittest.TestCase):
                 store.patch_config({"threshold_f": 200})
             with self.assertRaises(ValueError):
                 store.put_telemetry({"temperature_c": "hot"}, 100)
+            with self.assertRaises(ValueError):
+                store.put_vehicle_status({"soc_pct": 101}, 100)
 
 
 if __name__ == "__main__":

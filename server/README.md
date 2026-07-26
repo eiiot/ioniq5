@@ -19,3 +19,7 @@ python3 server/relay_api.py \
   --api-key-path /private/api.key \
   --state-path /private/state.json
 ```
+
+The server polls Bluelink's cached vehicle status every five minutes and
+includes the latest high-voltage battery SOC in `GET /v1/status` under
+`vehicle.soc_pct`. This feed is used by the Wireless Paper display.

@@ -16,6 +16,19 @@ At the serial monitor, send either a percentage or an NDJSON vehicle message:
 {"soc_pct":67}
 ```
 
+## Standalone Wi-Fi mode
+
+Provision credentials once over USB:
+
+```json
+{"command":"configure","ssid":"...","password":"...","server_url":"https://ioniq5-api.tuft.host","api_key":"..."}
+```
+
+The credentials are saved in the ESP32's local preferences and are not part of
+the firmware image. The display polls `/v1/status` over authenticated HTTPS
+every five minutes, retries temporary failures after 30 seconds, and retains
+the last displayed SOC when offline.
+
 ## BLE protocol
 
 - Device name: `IONIQ5-SOC`
