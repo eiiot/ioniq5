@@ -69,6 +69,7 @@ export function TemperatureHistory({
         accessibilityLabel="24 hour cabin temperature history"
         style={{ height: CHART_HEIGHT, overflow: 'hidden', width }}>
         <LineChart
+          bezier
           chartConfig={{
             backgroundGradientFrom: 'transparent',
             backgroundGradientTo: 'transparent',
@@ -84,7 +85,7 @@ export function TemperatureHistory({
             datasets: [{ data: values }],
           }}
           height={CHART_HEIGHT}
-          style={{ paddingRight: 0, paddingTop: 0 }}
+          style={{ paddingRight: 0, paddingTop: 12 }}
           transparent
           withDots={false}
           withHorizontalLabels={false}
