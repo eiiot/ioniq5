@@ -127,8 +127,6 @@ export function HomeScreen() {
           ) : null}
         </View>
 
-        <View style={[styles.separator, { backgroundColor: colors.separator }]} />
-
         <TemperatureHistory samples={history} />
 
         <View style={[styles.separator, { backgroundColor: colors.separator }]} />

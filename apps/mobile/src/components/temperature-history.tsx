@@ -72,19 +72,6 @@ export function TemperatureHistory({
       <View
         accessibilityLabel="24 hour cabin temperature history"
         style={{ height: CHART_HEIGHT, width }}>
-        {[0, 0.5, 1].map((position) => (
-          <View
-            key={position}
-            style={{
-              backgroundColor: colors.separator,
-              height: 0.5,
-              left: 0,
-              position: 'absolute',
-              right: 0,
-              top: position * CHART_HEIGHT,
-            }}
-          />
-        ))}
         {coordinates.slice(1).map((point, index) => {
           const previous = coordinates[index];
           const deltaX = point.x - previous.x;
