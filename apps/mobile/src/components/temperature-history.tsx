@@ -85,6 +85,8 @@ export function TemperatureHistory({
             datasets: [{ data: values }],
           }}
           height={CHART_HEIGHT}
+          style={{ paddingRight: 0, paddingTop: 0 }}
+          transparent
           withDots={false}
           withHorizontalLabels={false}
           withHorizontalLines={false}
