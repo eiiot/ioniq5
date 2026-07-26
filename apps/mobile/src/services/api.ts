@@ -3,12 +3,14 @@ import { fetch } from 'expo/fetch';
 import { API_BASE_URL } from '@/constants/api';
 
 export type CabinReading = {
-  battery_pct: number;
-  co2_ppm: number;
   humidity_pct: number;
-  measurement_age_s: number;
   received_at_unix: number;
-  rssi_dbm: number;
+  temperature_c: number;
+};
+
+export type CabinHistorySample = {
+  at_unix: number;
+  humidity_pct?: number;
   temperature_c: number;
 };
 
@@ -66,6 +68,9 @@ export const api = {
   getStatus(apiKey: string) {
     return request<VehicleStatus>('/v1/status', apiKey);
   },
+  getHistory(apiKey: string) {
+    return request<{ history: CabinHistorySample[] }>('/v1/history', apiKey);
+  },
   setAutomationEnabled(apiKey: string, enabled: boolean) {
     return request<VehicleStatus>('/v1/config', apiKey, {
       method: 'PATCH',
@@ -74,4 +79,3 @@ export const api = {
     });
   },
 };
-

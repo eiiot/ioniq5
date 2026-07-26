@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { colors } from '@/constants/colors';
+import { TemperatureHistory } from '@/components/temperature-history';
 import { useVehicleStatus } from '@/hooks/use-vehicle-status';
 
 function celsiusToFahrenheit(celsius: number) {
@@ -32,6 +33,7 @@ export function HomeScreen() {
   const {
     apiKeyConfigured,
     error,
+    history,
     isLoading,
     isUpdating,
     setEnabled,
@@ -111,7 +113,7 @@ export function HomeScreen() {
             selectable
             style={[styles.secondary, { color: colors.secondaryLabel }]}>
             {status?.cabin
-              ? `${status.cabin.humidity_pct}% humidity  ·  ${status.cabin.co2_ppm} ppm CO₂`
+              ? `${Math.round(status.cabin.humidity_pct)}% humidity`
               : 'No temperature reading'}
           </Text>
           {status?.cabin ? (
@@ -124,6 +126,10 @@ export function HomeScreen() {
             </Text>
           ) : null}
         </View>
+
+        <View style={[styles.separator, { backgroundColor: colors.separator }]} />
+
+        <TemperatureHistory samples={history} />
 
         <View style={[styles.separator, { backgroundColor: colors.separator }]} />
 

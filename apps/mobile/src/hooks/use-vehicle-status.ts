@@ -1,7 +1,11 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api, type VehicleStatus } from '@/services/api';
+import {
+  api,
+  type CabinHistorySample,
+  type VehicleStatus,
+} from '@/services/api';
 import { credentials } from '@/services/credentials';
 
 const REFRESH_INTERVAL_MS = 15_000;
@@ -9,6 +13,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 export function useVehicleStatus() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [status, setStatus] = useState<VehicleStatus | null>(null);
+  const [history, setHistory] = useState<CabinHistorySample[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -30,9 +35,13 @@ export function useVehicleStatus() {
     }
 
     try {
-      const nextStatus = await api.getStatus(key);
+      const [nextStatus, historyResponse] = await Promise.all([
+        api.getStatus(key),
+        api.getHistory(key),
+      ]);
       if (!mounted.current) return;
       setStatus(nextStatus);
+      setHistory(historyResponse.history);
       setError(null);
     } catch (caughtError) {
       if (!mounted.current) return;
@@ -95,6 +104,7 @@ export function useVehicleStatus() {
   return {
     apiKeyConfigured: Boolean(apiKey),
     error,
+    history,
     isLoading,
     isUpdating,
     refresh,
@@ -102,4 +112,3 @@ export function useVehicleStatus() {
     status,
   };
 }
-

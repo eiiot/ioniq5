@@ -24,6 +24,7 @@ except ModuleNotFoundError:
 
 MAX_REQUEST_BYTES = 16 * 1024
 READING_FRESHNESS_SECONDS = 120
+HISTORY_RETENTION_MINUTES = 24 * 60
 
 
 class EventLog:
@@ -118,6 +119,33 @@ class RelayStore:
         with self.lock:
             state = self._read()
             state["cabin"] = cabin
+            history = state.get("cabin_history")
+            if not isinstance(history, list):
+                history = []
+            minute = int(cabin["received_at_unix"] // 60) * 60
+            sample: dict[str, Any] = {
+                "at_unix": minute,
+                "temperature_c": float(temperature),
+            }
+            humidity = reading.get("humidity_pct")
+            if isinstance(humidity, (int, float)) and not isinstance(
+                humidity, bool
+            ):
+                sample["humidity_pct"] = float(humidity)
+            if history and isinstance(history[-1], dict) and history[-1].get(
+                "at_unix"
+            ) == minute:
+                history[-1] = sample
+            else:
+                history.append(sample)
+            oldest_minute = minute - (HISTORY_RETENTION_MINUTES - 1) * 60
+            state["cabin_history"] = [
+                item
+                for item in history
+                if isinstance(item, dict)
+                and isinstance(item.get("at_unix"), (int, float))
+                and item["at_unix"] >= oldest_minute
+            ]
             self._write(state)
             if self.event_log is not None:
                 self.event_log.write(
@@ -127,6 +155,13 @@ class RelayStore:
                     source_recorded_at_unix=reading.get("host_received_at_unix"),
                 )
             return self._config(state)
+
+    def history(self) -> list[dict[str, Any]]:
+        with self.lock:
+            history = self._read().get("cabin_history")
+            if not isinstance(history, list):
+                return []
+            return [item for item in history if isinstance(item, dict)]
 
     def put_vehicle_status(
         self, vehicle: dict[str, Any], received_at_unix: float | None = None
@@ -450,6 +485,11 @@ class RelayHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/v1/status":
             self.send_json(HTTPStatus.OK, self.app.store.status())
+            return
+        if self.path == "/v1/history":
+            self.send_json(
+                HTTPStatus.OK, {"history": self.app.store.history()}
+            )
             return
         if self.path == "/v1/config":
             self.send_json(

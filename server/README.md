@@ -7,6 +7,7 @@ Endpoints:
 
 - `GET /health`
 - `GET /v1/status`
+- `GET /v1/history` (minute-level cabin temperature for the last 24 hours)
 - `GET /v1/config`
 - `PATCH /v1/config`
 - `POST /v1/telemetry`

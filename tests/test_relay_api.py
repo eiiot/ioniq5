@@ -28,15 +28,48 @@ class RelayStoreTests(unittest.TestCase):
                 {"type": "aranet4", "temperature_c": 42.5, "counter": 7},
                 received_at_unix=110,
             )
+            store.put_telemetry(
+                {
+                    "type": "sht3x",
+                    "temperature_c": 24.5,
+                    "humidity_pct": 43.2,
+                    "counter": 8,
+                },
+                received_at_unix=119,
+            )
+            store.put_telemetry(
+                {
+                    "type": "sht3x",
+                    "temperature_c": 25.0,
+                    "humidity_pct": 42.8,
+                    "counter": 9,
+                },
+                received_at_unix=121,
+            )
 
-            status = store.status(now_unix=120)
+            status = store.status(now_unix=130)
             self.assertEqual(
                 status["automation"],
                 {"enabled": True, "threshold_f": 102.0},
             )
-            self.assertEqual(status["cabin"]["temperature_c"], 42.5)
-            self.assertEqual(status["cabin"]["received_at_unix"], 110)
+            self.assertEqual(status["cabin"]["temperature_c"], 25.0)
+            self.assertEqual(status["cabin"]["received_at_unix"], 121)
             self.assertTrue(status["connected"])
+            self.assertEqual(
+                store.history(),
+                [
+                    {
+                        "at_unix": 60,
+                        "temperature_c": 24.5,
+                        "humidity_pct": 43.2,
+                    },
+                    {
+                        "at_unix": 120,
+                        "temperature_c": 25.0,
+                        "humidity_pct": 42.8,
+                    },
+                ],
+            )
 
             store.put_vehicle_status(
                 {"soc_pct": 21, "source_updated_at": "2026-07-25T23:35:47Z"},
@@ -47,7 +80,8 @@ class RelayStoreTests(unittest.TestCase):
             self.assertEqual(vehicle["received_at_unix"], 121)
 
             persisted = json.loads((Path(directory) / "state.json").read_text())
-            self.assertEqual(persisted["cabin"]["counter"], 7)
+            self.assertEqual(persisted["cabin"]["counter"], 9)
+            self.assertEqual(len(persisted["cabin_history"]), 2)
             self.assertEqual(persisted["vehicle"]["soc_pct"], 21)
 
     def test_rejects_invalid_config_and_telemetry(self):
