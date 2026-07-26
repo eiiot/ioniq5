@@ -35,6 +35,9 @@ constexpr char kSocCharacteristicUuid[] =
     "42c7a101-7d8e-4c6c-9e3f-c99a9cc06a21";
 constexpr uint32_t kPollIntervalMs = 5 * 60 * 1000;
 constexpr uint32_t kRetryIntervalMs = 30 * 1000;
+constexpr uint32_t kButtonDebounceMs = 40;
+constexpr uint32_t kButtonLongPressMs = 900;
+constexpr int kButtonPin = 0;
 
 // ISRG Root X1. The hosted Tuft endpoint currently chains to Let's Encrypt.
 constexpr char kRootCertificate[] = R"PEM(
@@ -87,28 +90,54 @@ std::string serialBuffer;
 int currentSocPercent = -1;
 NetworkConfig networkConfig;
 uint32_t nextPollAtMs = 0;
+bool protectionEnabled = false;
+bool climateActive = false;
+bool sensorConnected = false;
+bool hasCabinTemperature = false;
+float cabinTemperatureF = 0;
+bool buttonWasDown = false;
+bool buttonLongPressHandled = false;
+uint32_t buttonDownAtMs = 0;
 
 void renderWaiting() {
   display.landscape();
   display.clearMemory();
   display.setFont(&FreeSans12pt7b);
-  display.printCenter("Waiting for SOC");
+  display.printCenter("Connecting...");
   display.update();
 }
 
-void renderSoc(int socPercent) {
+void renderStatus() {
   display.landscape();
   display.clearMemory();
 
   display.setFont(&FreeSans12pt7b);
-  display.printCenter("IONIQ 5", 0, -38);
+  display.setCursor(6, 20);
+  display.print("IONIQ 5");
 
-  const String value = String(socPercent) + "%";
+  const String value =
+      currentSocPercent >= 0 ? String(currentSocPercent) + "%" : "--%";
   display.setFont(&FreeSansBold24pt7b);
-  display.printCenter(value, 0, 7);
+  display.setCursor(5, 67);
+  display.print(value);
 
   display.setFont(&FreeSans12pt7b);
-  display.printCenter("BATTERY", 0, 45);
+  display.setCursor(132, 20);
+  if (hasCabinTemperature) {
+    display.print(String(static_cast<int>(roundf(cabinTemperatureF))) + " F");
+  } else {
+    display.print("-- F");
+  }
+  display.setCursor(132, 48);
+  display.print(climateActive ? "Cooling" : "Climate off");
+  display.setCursor(132, 76);
+  display.print(protectionEnabled ? "Protect ON" : "Protect OFF");
+
+  display.drawLine(5, 88, 245, 88, BLACK);
+  display.setCursor(6, 114);
+  display.print(sensorConnected ? "Sensor live" : "Sensor offline");
+  display.setCursor(151, 114);
+  display.print("Hold: toggle");
   display.update();
 }
 
@@ -123,7 +152,7 @@ bool applySocMessage(const std::string &message, const char *source) {
 
   if (parsed != currentSocPercent) {
     currentSocPercent = parsed;
-    renderSoc(currentSocPercent);
+    renderStatus();
   }
 
   if (socCharacteristic != nullptr) {
@@ -206,7 +235,7 @@ bool connectWifi() {
   return WiFi.status() == WL_CONNECTED;
 }
 
-bool fetchSoc() {
+bool fetchStatus() {
   if (!connectWifi()) {
     return false;
   }
@@ -245,7 +274,72 @@ bool fetchSoc() {
         "{\"event\":\"soc_fetch_failed\",\"error\":\"invalid SOC\"}");
     return false;
   }
-  return applySocMessage(std::to_string(socPercent), "wifi");
+  currentSocPercent = socPercent;
+  protectionEnabled = document["automation"]["enabled"] | false;
+  climateActive = document["climate"]["active"] | false;
+  sensorConnected = document["connected"] | false;
+  JsonVariant temperature = document["cabin"]["temperature_c"];
+  hasCabinTemperature = !temperature.isNull();
+  if (hasCabinTemperature) {
+    cabinTemperatureF = temperature.as<float>() * 9.0f / 5.0f + 32.0f;
+  }
+  renderStatus();
+  Serial.printf(
+      "{\"event\":\"status_updated\",\"source\":\"wifi\",\"soc_pct\":%d,"
+      "\"temperature_f\":%.1f,\"protection\":%s,\"climate\":%s}\n",
+      currentSocPercent, cabinTemperatureF,
+      protectionEnabled ? "true" : "false",
+      climateActive ? "true" : "false");
+  return true;
+}
+
+bool setProtectionEnabled(bool enabled) {
+  if (!connectWifi()) {
+    return false;
+  }
+  WiFiClientSecure client;
+  client.setCACert(kRootCertificate);
+  HTTPClient request;
+  const String url = networkConfig.serverUrl + "/v1/config";
+  if (!request.begin(client, url)) {
+    return false;
+  }
+  request.addHeader("Content-Type", "application/json");
+  request.addHeader("Authorization", "Bearer " + networkConfig.apiKey);
+  const int status = request.PATCH(
+      String("{\"enabled\":") + (enabled ? "true}" : "false}"));
+  request.end();
+  if (status != HTTP_CODE_OK) {
+    Serial.printf(
+        "{\"event\":\"protection_toggle_failed\",\"status\":%d}\n", status);
+    return false;
+  }
+  protectionEnabled = enabled;
+  renderStatus();
+  Serial.printf(
+      "{\"event\":\"protection_toggled\",\"enabled\":%s}\n",
+      enabled ? "true" : "false");
+  return true;
+}
+
+void processButton() {
+  const bool down = digitalRead(kButtonPin) == LOW;
+  const uint32_t now = millis();
+  if (down && !buttonWasDown) {
+    buttonDownAtMs = now;
+    buttonLongPressHandled = false;
+  } else if (
+      down && !buttonLongPressHandled &&
+      now - buttonDownAtMs >= kButtonLongPressMs) {
+    buttonLongPressHandled = true;
+    setProtectionEnabled(!protectionEnabled);
+    nextPollAtMs = now + kRetryIntervalMs;
+  } else if (!down && buttonWasDown &&
+             now - buttonDownAtMs >= kButtonDebounceMs &&
+             !buttonLongPressHandled) {
+    nextPollAtMs = now;
+  }
+  buttonWasDown = down;
 }
 
 class SocCallbacks final : public NimBLECharacteristicCallbacks {
@@ -302,6 +396,7 @@ void setup() {
   delay(800);
 
   renderWaiting();
+  pinMode(kButtonPin, INPUT_PULLUP);
   setupBle();
   networkConfig = loadNetworkConfig();
   Serial.printf(
@@ -313,9 +408,10 @@ void setup() {
 
 void loop() {
   processSerial();
+  processButton();
   if (networkConfig.complete() &&
       static_cast<int32_t>(millis() - nextPollAtMs) >= 0) {
-    const bool succeeded = fetchSoc();
+    const bool succeeded = fetchStatus();
     nextPollAtMs =
         millis() + (succeeded ? kPollIntervalMs : kRetryIntervalMs);
   }

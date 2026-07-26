@@ -1,7 +1,10 @@
-# Wireless Paper SOC display
+# Wireless Paper entryway remote
 
-Shows the Ioniq 5 high-voltage battery state of charge on a Heltec Wireless
-Paper. The displayed value can be updated either over USB serial or BLE.
+Shows the Ioniq 5 battery state of charge, cabin temperature, climate state,
+cabin-protection state, and sensor connectivity on a Heltec Wireless Paper.
+
+- Tap **PRG** to refresh immediately.
+- Hold **PRG** for about one second to toggle cabin protection.
 
 ## Flash and test over USB
 
@@ -27,7 +30,7 @@ Provision credentials once over USB:
 The credentials are saved in the ESP32's local preferences and are not part of
 the firmware image. The display polls `/v1/status` over authenticated HTTPS
 every five minutes, retries temporary failures after 30 seconds, and retains
-the last displayed SOC when offline.
+the last display when offline.
 
 ## BLE protocol
 
