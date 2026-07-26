@@ -111,9 +111,14 @@ void printReading(NimBLEAdvertisedDevice &advertisement,
 }
 
 void printSht41Reading() {
-  sensors_event_t humidity;
-  sensors_event_t temperature;
-  sht41.getEvent(&humidity, &temperature);
+  sensors_event_t humidity{};
+  sensors_event_t temperature{};
+  if (!sht41.getEvent(&humidity, &temperature)) {
+    Serial.printf(
+        "{\"event\":\"sht41_read_error\",\"counter\":%lu}\n",
+        static_cast<unsigned long>(sht41Counter++));
+    return;
+  }
   Serial.printf(
       "{\"type\":\"sht41\",\"temperature_c\":%.2f,"
       "\"humidity_pct\":%.2f,\"counter\":%lu}\n",
