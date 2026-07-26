@@ -21,6 +21,7 @@ export function useVehicleStatus() {
   const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
       mounted.current = false;
     };
