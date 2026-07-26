@@ -14,6 +14,7 @@ constexpr uint32_t kPauseBetweenScansMs = 5000;
 constexpr uint8_t kIntegrationsFlag = 1U << 5;
 constexpr uint8_t kSdaPin = 4;
 constexpr uint8_t kSclPin = 5;
+constexpr uint8_t kSht41Address = 0x44;
 constexpr uint32_t kSht41IntervalMs = 2000;
 
 struct Aranet4Reading {
@@ -36,6 +37,18 @@ uint32_t sht41Counter = 0;
 uint16_t readLittleEndianU16(const uint8_t *bytes) {
   return static_cast<uint16_t>(bytes[0]) |
          (static_cast<uint16_t>(bytes[1]) << 8);
+}
+
+uint8_t sht41Crc8(const uint8_t *data, size_t size) {
+  uint8_t crc = 0xff;
+  for (size_t index = 0; index < size; ++index) {
+    crc ^= data[index];
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      crc = (crc & 0x80) ? static_cast<uint8_t>((crc << 1) ^ 0x31)
+                         : static_cast<uint8_t>(crc << 1);
+    }
+  }
+  return crc;
 }
 
 bool decodeAranet4(NimBLEAdvertisedDevice &advertisement,
@@ -111,18 +124,44 @@ void printReading(NimBLEAdvertisedDevice &advertisement,
 }
 
 void printSht41Reading() {
-  sensors_event_t humidity{};
-  sensors_event_t temperature{};
-  if (!sht41.getEvent(&humidity, &temperature)) {
+  Wire.beginTransmission(kSht41Address);
+  Wire.write(0xfd);
+  const uint8_t commandStatus = Wire.endTransmission();
+  delay(20);
+
+  uint8_t bytes[6]{};
+  const size_t received = Wire.requestFrom(kSht41Address, sizeof(bytes));
+  for (size_t index = 0; index < received && index < sizeof(bytes); ++index) {
+    bytes[index] = Wire.read();
+  }
+
+  const bool crcValid =
+      received == sizeof(bytes) && sht41Crc8(bytes, 2) == bytes[2] &&
+      sht41Crc8(bytes + 3, 2) == bytes[5];
+  if (commandStatus != 0 || !crcValid) {
     Serial.printf(
-        "{\"event\":\"sht41_read_error\",\"counter\":%lu}\n",
+        "{\"event\":\"sht41_read_error\",\"command_status\":%u,"
+        "\"received\":%u,\"raw\":\"%02x%02x%02x%02x%02x%02x\","
+        "\"crc_valid\":%s,\"counter\":%lu}\n",
+        commandStatus, static_cast<unsigned>(received), bytes[0], bytes[1],
+        bytes[2], bytes[3], bytes[4], bytes[5],
+        crcValid ? "true" : "false",
         static_cast<unsigned long>(sht41Counter++));
     return;
   }
+
+  const uint16_t temperatureRaw =
+      (static_cast<uint16_t>(bytes[0]) << 8) | bytes[1];
+  const uint16_t humidityRaw =
+      (static_cast<uint16_t>(bytes[3]) << 8) | bytes[4];
+  const float temperatureC =
+      -45.0f + 175.0f * temperatureRaw / 65535.0f;
+  const float humidityPct =
+      constrain(-6.0f + 125.0f * humidityRaw / 65535.0f, 0.0f, 100.0f);
   Serial.printf(
       "{\"type\":\"sht41\",\"temperature_c\":%.2f,"
       "\"humidity_pct\":%.2f,\"counter\":%lu}\n",
-      temperature.temperature, humidity.relative_humidity,
+      temperatureC, humidityPct,
       static_cast<unsigned long>(sht41Counter++));
 }
 
