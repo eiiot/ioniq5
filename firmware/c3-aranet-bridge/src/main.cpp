@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <Adafruit_SHT4x.h>
 #include <NimBLEDevice.h>
 #include <Wire.h>
 
@@ -14,8 +13,8 @@ constexpr uint32_t kPauseBetweenScansMs = 5000;
 constexpr uint8_t kIntegrationsFlag = 1U << 5;
 constexpr uint8_t kSdaPin = 4;
 constexpr uint8_t kSclPin = 5;
-constexpr uint8_t kSht41Address = 0x44;
-constexpr uint32_t kSht41IntervalMs = 2000;
+constexpr uint8_t kSht3xAddress = 0x44;
+constexpr uint32_t kSht3xIntervalMs = 2000;
 
 struct Aranet4Reading {
   bool integrationsEnabled = false;
@@ -30,16 +29,15 @@ struct Aranet4Reading {
 };
 
 NimBLEScan *scanner = nullptr;
-Adafruit_SHT4x sht41;
-bool sht41Available = false;
-uint32_t sht41Counter = 0;
+bool sht3xAvailable = false;
+uint32_t sht3xCounter = 0;
 
 uint16_t readLittleEndianU16(const uint8_t *bytes) {
   return static_cast<uint16_t>(bytes[0]) |
          (static_cast<uint16_t>(bytes[1]) << 8);
 }
 
-uint8_t sht41Crc8(const uint8_t *data, size_t size) {
+uint8_t shtCrc8(const uint8_t *data, size_t size) {
   uint8_t crc = 0xff;
   for (size_t index = 0; index < size; ++index) {
     crc ^= data[index];
@@ -123,30 +121,32 @@ void printReading(NimBLEAdvertisedDevice &advertisement,
       reading.counter);
 }
 
-void printSht41Reading() {
-  Wire.beginTransmission(kSht41Address);
-  Wire.write(0xfd);
+void printSht3xReading() {
+  Wire.beginTransmission(kSht3xAddress);
+  // Single-shot, high repeatability, clock stretching disabled.
+  Wire.write(0x24);
+  Wire.write(0x00);
   const uint8_t commandStatus = Wire.endTransmission();
   delay(20);
 
   uint8_t bytes[6]{};
-  const size_t received = Wire.requestFrom(kSht41Address, sizeof(bytes));
+  const size_t received = Wire.requestFrom(kSht3xAddress, sizeof(bytes));
   for (size_t index = 0; index < received && index < sizeof(bytes); ++index) {
     bytes[index] = Wire.read();
   }
 
   const bool crcValid =
-      received == sizeof(bytes) && sht41Crc8(bytes, 2) == bytes[2] &&
-      sht41Crc8(bytes + 3, 2) == bytes[5];
+      received == sizeof(bytes) && shtCrc8(bytes, 2) == bytes[2] &&
+      shtCrc8(bytes + 3, 2) == bytes[5];
   if (commandStatus != 0 || !crcValid) {
     Serial.printf(
-        "{\"event\":\"sht41_read_error\",\"command_status\":%u,"
+        "{\"event\":\"sht3x_read_error\",\"command_status\":%u,"
         "\"received\":%u,\"raw\":\"%02x%02x%02x%02x%02x%02x\","
         "\"crc_valid\":%s,\"counter\":%lu}\n",
         commandStatus, static_cast<unsigned>(received), bytes[0], bytes[1],
         bytes[2], bytes[3], bytes[4], bytes[5],
         crcValid ? "true" : "false",
-        static_cast<unsigned long>(sht41Counter++));
+        static_cast<unsigned long>(sht3xCounter++));
     return;
   }
 
@@ -156,13 +156,12 @@ void printSht41Reading() {
       (static_cast<uint16_t>(bytes[3]) << 8) | bytes[4];
   const float temperatureC =
       -45.0f + 175.0f * temperatureRaw / 65535.0f;
-  const float humidityPct =
-      constrain(-6.0f + 125.0f * humidityRaw / 65535.0f, 0.0f, 100.0f);
+  const float humidityPct = 100.0f * humidityRaw / 65535.0f;
   Serial.printf(
-      "{\"type\":\"sht41\",\"temperature_c\":%.2f,"
+      "{\"type\":\"sht3x\",\"temperature_c\":%.2f,"
       "\"humidity_pct\":%.2f,\"counter\":%lu}\n",
       temperatureC, humidityPct,
-      static_cast<unsigned long>(sht41Counter++));
+      static_cast<unsigned long>(sht3xCounter++));
 }
 
 }  // namespace
@@ -173,11 +172,9 @@ void setup() {
 
   Wire.begin(kSdaPin, kSclPin);
   Wire.setClock(50000);
-  sht41Available = sht41.begin(&Wire);
-  if (sht41Available) {
-    sht41.setPrecision(SHT4X_HIGH_PRECISION);
-    sht41.setHeater(SHT4X_NO_HEATER);
-  } else {
+  Wire.beginTransmission(kSht3xAddress);
+  sht3xAvailable = Wire.endTransmission() == 0;
+  if (!sht3xAvailable) {
     NimBLEDevice::init("");
     scanner = NimBLEDevice::getScan();
     scanner->setActiveScan(true);
@@ -185,15 +182,15 @@ void setup() {
 
   Serial.printf(
       "{\"event\":\"ready\",\"device\":\"c3-cabin-bridge\","
-      "\"schema_version\":2,\"sht41\":%s,"
+      "\"schema_version\":2,\"sht3x\":%s,"
       "\"fallback\":\"aranet4\"}\n",
-      sht41Available ? "true" : "false");
+      sht3xAvailable ? "true" : "false");
 }
 
 void loop() {
-  if (sht41Available) {
-    printSht41Reading();
-    delay(kSht41IntervalMs);
+  if (sht3xAvailable) {
+    printSht3xReading();
+    delay(kSht3xIntervalMs);
     return;
   }
 

@@ -41,6 +41,20 @@ class ParseReadingTests(unittest.TestCase):
         self.assertEqual(parsed["humidity_pct"], 43.2)
         self.assertEqual(parsed["received_at_unix"], 123.5)
 
+    def test_accepts_sht3x_reading_and_adds_host_timestamp(self):
+        payload = {
+            "type": "sht3x",
+            "temperature_c": 24.75,
+            "humidity_pct": 43.2,
+            "counter": 8,
+        }
+
+        parsed = MODULE.parse_reading(json.dumps(payload), received_at=123.5)
+
+        self.assertEqual(parsed["temperature_c"], 24.75)
+        self.assertEqual(parsed["humidity_pct"], 43.2)
+        self.assertEqual(parsed["received_at_unix"], 123.5)
+
     def test_ignores_firmware_status_events(self):
         parsed = MODULE.parse_reading(
             '{"event":"scan_complete","aranet_devices":0}', received_at=123.5

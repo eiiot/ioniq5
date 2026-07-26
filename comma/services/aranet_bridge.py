@@ -27,7 +27,7 @@ def parse_reading(line: str, received_at: float) -> dict[str, Any] | None:
 
     if (
         not isinstance(message, dict)
-        or message.get("type") not in {"aranet4", "sht41"}
+        or message.get("type") not in {"aranet4", "sht41", "sht3x"}
         or not isinstance(message.get("temperature_c"), (int, float))
     ):
         return None
