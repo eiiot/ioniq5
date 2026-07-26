@@ -133,6 +133,7 @@ void setup() {
   delay(1000);
 
   Wire.begin(kSdaPin, kSclPin);
+  Wire.setClock(50000);
   sht41Available = sht41.begin(&Wire);
   if (sht41Available) {
     sht41.setPrecision(SHT4X_HIGH_PRECISION);
