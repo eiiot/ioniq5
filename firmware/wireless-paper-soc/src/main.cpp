@@ -230,14 +230,19 @@ bool fetchSoc() {
   const DeserializationError error =
       deserializeJson(document, request.getStream());
   request.end();
-  if (error != DeserializationError::Ok ||
-      !document["vehicle"]["soc_pct"].is<int>()) {
+  JsonVariant socValue = document["vehicle"]["soc_pct"];
+  if (error != DeserializationError::Ok || socValue.isNull()) {
     Serial.println(
         "{\"event\":\"soc_fetch_failed\",\"error\":\"invalid response\"}");
     return false;
   }
-  return applySocMessage(
-      std::to_string(document["vehicle"]["soc_pct"].as<int>()), "wifi");
+  const int socPercent = socValue.as<int>();
+  if (socPercent < 0 || socPercent > 100) {
+    Serial.println(
+        "{\"event\":\"soc_fetch_failed\",\"error\":\"invalid SOC\"}");
+    return false;
+  }
+  return applySocMessage(std::to_string(socPercent), "wifi");
 }
 
 class SocCallbacks final : public NimBLECharacteristicCallbacks {
