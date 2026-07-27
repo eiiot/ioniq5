@@ -10,13 +10,24 @@ class ClimateControllerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = RelayStore(Path(directory) / "state.json")
             store.patch_config({"enabled": True})
-            store.put_telemetry({"temperature_c": 41}, received_at_unix=100)
+            store.put_telemetry({"temperature_c": 52}, received_at_unix=100)
             controller = ClimateController(
                 store, ["should-not-run"], Path(directory) / "credentials.json", False
             )
 
             self.assertEqual(controller.evaluate(now_unix=101), "start")
             self.assertEqual(store.status(101)["climate"], {})
+
+    def test_controller_applies_temperature_offset_before_deciding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RelayStore(Path(directory) / "state.json")
+            store.patch_config({"enabled": True})
+            store.put_telemetry({"temperature_c": 41}, received_at_unix=100)
+            controller = ClimateController(
+                store, ["should-not-run"], Path(directory) / "credentials.json", False
+            )
+
+            self.assertIsNone(controller.evaluate(now_unix=101))
 
     def test_command_claim_prevents_duplicate_requests(self):
         with tempfile.TemporaryDirectory() as directory:

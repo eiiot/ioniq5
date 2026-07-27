@@ -14,7 +14,11 @@ class RelayStoreTests(unittest.TestCase):
             self.assertEqual(
                 store.status(now_unix=100),
                 {
-                    "automation": {"enabled": False, "threshold_f": 105.0},
+                    "automation": {
+                        "enabled": False,
+                        "threshold_f": 105.0,
+                        "temperature_offset_f": 20.0,
+                    },
                     "cabin": None,
                     "connected": False,
                     "climate": {},
@@ -50,9 +54,16 @@ class RelayStoreTests(unittest.TestCase):
             status = store.status(now_unix=130)
             self.assertEqual(
                 status["automation"],
-                {"enabled": True, "threshold_f": 102.0},
+                {
+                    "enabled": True,
+                    "threshold_f": 102.0,
+                    "temperature_offset_f": 20.0,
+                },
             )
-            self.assertEqual(status["cabin"]["temperature_c"], 25.0)
+            self.assertAlmostEqual(
+                status["cabin"]["temperature_c"], 13.8888888889
+            )
+            self.assertEqual(status["cabin"]["raw_temperature_c"], 25.0)
             self.assertEqual(status["cabin"]["received_at_unix"], 121)
             self.assertTrue(status["connected"])
             self.assertEqual(
@@ -60,12 +71,14 @@ class RelayStoreTests(unittest.TestCase):
                 [
                     {
                         "at_unix": 60,
-                        "temperature_c": 24.5,
+                        "temperature_c": 13.38888888888889,
+                        "raw_temperature_c": 24.5,
                         "humidity_pct": 43.2,
                     },
                     {
                         "at_unix": 120,
-                        "temperature_c": 25.0,
+                        "temperature_c": 13.88888888888889,
+                        "raw_temperature_c": 25.0,
                         "humidity_pct": 42.8,
                     },
                 ],
@@ -80,6 +93,7 @@ class RelayStoreTests(unittest.TestCase):
             self.assertEqual(vehicle["received_at_unix"], 121)
 
             persisted = json.loads((Path(directory) / "state.json").read_text())
+            self.assertEqual(persisted["cabin"]["temperature_c"], 25.0)
             self.assertEqual(persisted["cabin"]["counter"], 9)
             self.assertEqual(len(persisted["cabin_history"]), 2)
             self.assertEqual(persisted["vehicle"]["soc_pct"], 21)

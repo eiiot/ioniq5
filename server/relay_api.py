@@ -25,6 +25,7 @@ except ModuleNotFoundError:
 MAX_REQUEST_BYTES = 16 * 1024
 READING_FRESHNESS_SECONDS = 120
 HISTORY_RETENTION_MINUTES = 24 * 60
+DEFAULT_TEMPERATURE_OFFSET_F = 20.0
 
 
 class EventLog:
@@ -75,7 +76,27 @@ class RelayStore:
         return {
             "enabled": stored.get("enabled") is True,
             "threshold_f": float(stored.get("threshold_f", 105.0)),
+            "temperature_offset_f": float(
+                stored.get(
+                    "temperature_offset_f", DEFAULT_TEMPERATURE_OFFSET_F
+                )
+            ),
         }
+
+    @staticmethod
+    def _estimated_reading(
+        reading: dict[str, Any], temperature_offset_f: float
+    ) -> dict[str, Any]:
+        estimated = dict(reading)
+        temperature_c = reading.get("temperature_c")
+        if isinstance(temperature_c, (int, float)) and not isinstance(
+            temperature_c, bool
+        ):
+            estimated["raw_temperature_c"] = float(temperature_c)
+            estimated["temperature_c"] = (
+                float(temperature_c) - temperature_offset_f / 1.8
+            )
+        return estimated
 
     def config(self) -> dict[str, Any]:
         with self.lock:
@@ -98,6 +119,17 @@ class RelayStore:
                 ):
                     raise ValueError("threshold_f must be between 80 and 130")
                 config["threshold_f"] = float(threshold)
+            if "temperature_offset_f" in changes:
+                offset = changes["temperature_offset_f"]
+                if (
+                    not isinstance(offset, (int, float))
+                    or isinstance(offset, bool)
+                    or not 0 <= offset <= 50
+                ):
+                    raise ValueError(
+                        "temperature_offset_f must be between 0 and 50"
+                    )
+                config["temperature_offset_f"] = float(offset)
             state["automation"] = config
             self._write(state)
             if self.event_log is not None:
@@ -158,10 +190,16 @@ class RelayStore:
 
     def history(self) -> list[dict[str, Any]]:
         with self.lock:
-            history = self._read().get("cabin_history")
+            state = self._read()
+            history = state.get("cabin_history")
             if not isinstance(history, list):
                 return []
-            return [item for item in history if isinstance(item, dict)]
+            offset = self._config(state)["temperature_offset_f"]
+            return [
+                self._estimated_reading(item, offset)
+                for item in history
+                if isinstance(item, dict)
+            ]
 
     def put_vehicle_status(
         self, vehicle: dict[str, Any], received_at_unix: float | None = None
@@ -267,7 +305,14 @@ class RelayStore:
             )
             return {
                 "automation": self._config(state),
-                "cabin": cabin,
+                "cabin": (
+                    self._estimated_reading(
+                        cabin,
+                        self._config(state)["temperature_offset_f"],
+                    )
+                    if cabin is not None
+                    else None
+                ),
                 "connected": connected,
                 "climate": state.get("climate")
                 if isinstance(state.get("climate"), dict)
@@ -302,9 +347,13 @@ class ClimateController:
         if not isinstance(temperature_c, (int, float)):
             return None
         config = snapshot["automation"]
+        raw_temperature_f = temperature_c * 9 / 5 + 32
+        estimated_temperature_f = (
+            raw_temperature_f - config["temperature_offset_f"]
+        )
         action = decide(
             config["enabled"],
-            temperature_c * 9 / 5 + 32,
+            estimated_temperature_f,
             snapshot["climate"],
             now,
             threshold_f=config["threshold_f"],
@@ -315,7 +364,9 @@ class ClimateController:
             self.store.event_log.write(
                 "protection_decision",
                 action=action,
-                temperature_f=temperature_c * 9 / 5 + 32,
+                temperature_f=estimated_temperature_f,
+                raw_temperature_f=raw_temperature_f,
+                temperature_offset_f=config["temperature_offset_f"],
                 threshold_f=config["threshold_f"],
             )
         if not self.store.claim_climate_command(action, now):
