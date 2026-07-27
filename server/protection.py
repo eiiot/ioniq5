@@ -26,12 +26,15 @@ def decide(
 ) -> Decision:
     active = climate.get("active") is True
     if active:
-        if (
+        failed_stop = (
             climate.get("last_action") == "stop"
             and climate.get("last_succeeded") is False
             and isinstance(
                 climate.get("last_completed_at_unix"), (int, float)
             )
+        )
+        if (
+            failed_stop
             and now_unix - climate["last_completed_at_unix"]
             < FAILED_STOP_RETRY_SECONDS
         ):
@@ -42,6 +45,12 @@ def decide(
         if not isinstance(started_at, (int, float)):
             return "stop"
         runtime = now_unix - started_at
+        if (
+            failed_stop
+            and runtime >= MAXIMUM_RUNTIME_SECONDS
+            and temperature_f > target_f
+        ):
+            return "start"
         if runtime >= MAXIMUM_RUNTIME_SECONDS:
             return "stop"
         if runtime >= MINIMUM_RUNTIME_SECONDS and temperature_f <= target_f:

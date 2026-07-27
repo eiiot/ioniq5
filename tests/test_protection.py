@@ -101,7 +101,7 @@ class ProtectionDecisionTests(unittest.TestCase):
             "start",
         )
 
-    def test_failed_stop_retries_after_short_delay(self):
+    def test_failed_stop_after_expired_session_restarts_when_still_hot(self):
         climate = {
             "active": True,
             "started_at_unix": 100,
@@ -114,6 +114,19 @@ class ProtectionDecisionTests(unittest.TestCase):
         )
         self.assertEqual(
             decide(True, temperature_f=110, climate=climate, now_unix=1_021),
+            "start",
+        )
+
+    def test_failed_stop_retries_when_protection_is_disabled(self):
+        climate = {
+            "active": True,
+            "started_at_unix": 100,
+            "last_action": "stop",
+            "last_succeeded": False,
+            "last_completed_at_unix": 990,
+        }
+        self.assertEqual(
+            decide(False, temperature_f=110, climate=climate, now_unix=1_021),
             "stop",
         )
 
