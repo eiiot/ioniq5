@@ -137,7 +137,7 @@ export function HomeScreen() {
               Cabin Protection
             </Text>
             <Text style={[styles.secondary, { color: colors.secondaryLabel }]}>
-              Starts at {Math.round(status?.automation.threshold_f ?? 105)}°F
+              Starts at high heat
             </Text>
           </View>
           <Switch

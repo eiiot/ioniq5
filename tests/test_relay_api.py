@@ -16,7 +16,7 @@ class RelayStoreTests(unittest.TestCase):
                 {
                     "automation": {
                         "enabled": False,
-                        "threshold_f": 105.0,
+                        "threshold_f": 115.0,
                         "temperature_offset_f": 20.0,
                     },
                     "cabin": None,

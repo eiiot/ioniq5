@@ -26,6 +26,8 @@ MAX_REQUEST_BYTES = 16 * 1024
 READING_FRESHNESS_SECONDS = 120
 HISTORY_RETENTION_MINUTES = 24 * 60
 DEFAULT_TEMPERATURE_OFFSET_F = 20.0
+DEFAULT_RAW_START_THRESHOLD_F = 115.0
+RAW_STOP_TARGET_F = 105.0
 
 
 class EventLog:
@@ -75,7 +77,9 @@ class RelayStore:
             stored = {}
         return {
             "enabled": stored.get("enabled") is True,
-            "threshold_f": float(stored.get("threshold_f", 105.0)),
+            "threshold_f": float(
+                stored.get("threshold_f", DEFAULT_RAW_START_THRESHOLD_F)
+            ),
             "temperature_offset_f": float(
                 stored.get(
                     "temperature_offset_f", DEFAULT_TEMPERATURE_OFFSET_F
@@ -348,15 +352,14 @@ class ClimateController:
             return None
         config = snapshot["automation"]
         raw_temperature_f = temperature_c * 9 / 5 + 32
-        estimated_temperature_f = (
-            raw_temperature_f - config["temperature_offset_f"]
-        )
+        estimated_temperature_f = raw_temperature_f - config["temperature_offset_f"]
         action = decide(
             config["enabled"],
-            estimated_temperature_f,
+            raw_temperature_f,
             snapshot["climate"],
             now,
             threshold_f=config["threshold_f"],
+            target_f=RAW_STOP_TARGET_F,
         )
         if action is None or not self.commands_enabled:
             return action
@@ -364,10 +367,12 @@ class ClimateController:
             self.store.event_log.write(
                 "protection_decision",
                 action=action,
-                temperature_f=estimated_temperature_f,
+                temperature_f=raw_temperature_f,
                 raw_temperature_f=raw_temperature_f,
+                estimated_temperature_f=estimated_temperature_f,
                 temperature_offset_f=config["temperature_offset_f"],
                 threshold_f=config["threshold_f"],
+                target_f=RAW_STOP_TARGET_F,
             )
         if not self.store.claim_climate_command(action, now):
             return None
