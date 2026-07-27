@@ -28,6 +28,8 @@ HISTORY_RETENTION_MINUTES = 24 * 60
 DEFAULT_TEMPERATURE_OFFSET_F = 20.0
 DEFAULT_RAW_START_THRESHOLD_F = 115.0
 RAW_STOP_TARGET_F = 105.0
+RAW_RESTART_THRESHOLD_F = 115.0
+PARKING_PROTECTION_WINDOW_SECONDS = 12 * 60 * 60
 
 
 class EventLog:
@@ -148,6 +150,9 @@ class RelayStore:
             temperature, bool
         ):
             raise ValueError("temperature_c must be a number")
+        onroad = reading.get("onroad")
+        if "onroad" in reading and not isinstance(onroad, bool):
+            raise ValueError("onroad must be a boolean")
         cabin = dict(reading)
         cabin["received_at_unix"] = (
             time.time() if received_at_unix is None else received_at_unix
@@ -155,6 +160,15 @@ class RelayStore:
         with self.lock:
             state = self._read()
             state["cabin"] = cabin
+            if isinstance(onroad, bool):
+                parking = state.get("parking")
+                if not isinstance(parking, dict):
+                    parking = {}
+                previous_onroad = parking.get("onroad")
+                if not onroad and previous_onroad is not False:
+                    parking["parked_at_unix"] = cabin["received_at_unix"]
+                parking["onroad"] = onroad
+                state["parking"] = parking
             history = state.get("cabin_history")
             if not isinstance(history, list):
                 history = []
@@ -189,6 +203,7 @@ class RelayStore:
                     temperature_c=temperature,
                     counter=reading.get("counter"),
                     source_recorded_at_unix=reading.get("host_received_at_unix"),
+                    onroad=onroad,
                 )
             return self._config(state)
 
@@ -240,7 +255,29 @@ class RelayStore:
                 "climate": state.get("climate")
                 if isinstance(state.get("climate"), dict)
                 else {},
+                "parking": state.get("parking")
+                if isinstance(state.get("parking"), dict)
+                else None,
             }
+
+    @staticmethod
+    def protection_eligible(
+        parking: dict[str, Any] | None, now_unix: float
+    ) -> bool:
+        if not isinstance(parking, dict):
+            return True
+        onroad = parking.get("onroad")
+        if not isinstance(onroad, bool):
+            return True
+        if onroad:
+            return False
+        parked_at = parking.get("parked_at_unix")
+        return (
+            isinstance(parked_at, (int, float))
+            and 0
+            <= now_unix - parked_at
+            <= PARKING_PROTECTION_WINDOW_SECONDS
+        )
 
     def claim_climate_command(self, action: str, now_unix: float) -> bool:
         with self.lock:
@@ -307,6 +344,17 @@ class RelayStore:
                 isinstance(received_at, (int, float))
                 and 0 <= now - received_at <= READING_FRESHNESS_SECONDS
             )
+            parking = state.get("parking")
+            if not isinstance(parking, dict):
+                parking = None
+            elif isinstance(parking.get("parked_at_unix"), (int, float)):
+                parking = {
+                    **parking,
+                    "protection_eligible_until_unix": (
+                        parking["parked_at_unix"]
+                        + PARKING_PROTECTION_WINDOW_SECONDS
+                    ),
+                }
             return {
                 "automation": self._config(state),
                 "cabin": (
@@ -322,6 +370,7 @@ class RelayStore:
                 if isinstance(state.get("climate"), dict)
                 else {},
                 "last_climate_request": state.get("last_climate_request"),
+                "parking": parking,
                 "vehicle": state.get("vehicle")
                 if isinstance(state.get("vehicle"), dict)
                 else None,
@@ -354,12 +403,14 @@ class ClimateController:
         raw_temperature_f = temperature_c * 9 / 5 + 32
         estimated_temperature_f = raw_temperature_f - config["temperature_offset_f"]
         action = decide(
-            config["enabled"],
+            config["enabled"]
+            and self.store.protection_eligible(snapshot["parking"], now),
             raw_temperature_f,
             snapshot["climate"],
             now,
             threshold_f=config["threshold_f"],
             target_f=RAW_STOP_TARGET_F,
+            restart_threshold_f=RAW_RESTART_THRESHOLD_F,
         )
         if action is None or not self.commands_enabled:
             return action
@@ -373,6 +424,7 @@ class ClimateController:
                 temperature_offset_f=config["temperature_offset_f"],
                 threshold_f=config["threshold_f"],
                 target_f=RAW_STOP_TARGET_F,
+                restart_threshold_f=RAW_RESTART_THRESHOLD_F,
             )
         if not self.store.claim_climate_command(action, now):
             return None

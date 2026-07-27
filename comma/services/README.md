@@ -65,6 +65,10 @@ configuration from `https://ioniq5-api.tuft.host`, saves it to
 `/data/ioniq5/state/config.json`, and pushes each new Aranet reading to the
 relay for the mobile app.
 
+When `/data/params/d/IsOnroad` is available, the sync also forwards comma's
+driving state. The relay uses the onroad-to-offroad transition as the parked
+timestamp and permits cabin protection for the following 12 hours.
+
 It reuses the API key created above:
 
 ```sh

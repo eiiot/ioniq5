@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 DEFAULT_API_KEY_PATH = Path("/data/ioniq5/state/control-api.key")
 DEFAULT_CONFIG_PATH = Path("/data/ioniq5/state/config.json")
 DEFAULT_LATEST_PATH = Path("/tmp/ioniq5/aranet-latest.json")
+DEFAULT_ONROAD_PATH = Path("/data/params/d/IsOnroad")
 DEFAULT_SERVER_URL = "https://ioniq5-api.tuft.host"
 
 
@@ -64,6 +65,7 @@ def sync_once(
     latest_path: Path,
     config_path: Path,
     previous_fingerprint: str | None,
+    onroad_path: Path = DEFAULT_ONROAD_PATH,
 ) -> str | None:
     config = client.get_config()
     write_json(config_path, config)
@@ -76,7 +78,17 @@ def sync_once(
     if not isinstance(reading, dict):
         return previous_fingerprint
 
-    fingerprint = hashlib.sha256(raw_reading).hexdigest()
+    try:
+        onroad_value = onroad_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        onroad_value = ""
+    if onroad_value in {"0", "1"}:
+        reading["onroad"] = onroad_value == "1"
+
+    encoded_reading = json.dumps(
+        reading, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    fingerprint = hashlib.sha256(encoded_reading).hexdigest()
     if fingerprint != previous_fingerprint:
         client.push_telemetry(reading)
     return fingerprint
@@ -87,6 +99,7 @@ def run(
     api_key_path: Path = DEFAULT_API_KEY_PATH,
     config_path: Path = DEFAULT_CONFIG_PATH,
     latest_path: Path = DEFAULT_LATEST_PATH,
+    onroad_path: Path = DEFAULT_ONROAD_PATH,
     interval: float = 15,
 ) -> None:
     api_key = api_key_path.read_text(encoding="utf-8").strip()
@@ -100,6 +113,7 @@ def run(
                 latest_path=latest_path,
                 config_path=config_path,
                 previous_fingerprint=fingerprint,
+                onroad_path=onroad_path,
             )
             delay = interval
         except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
@@ -114,6 +128,7 @@ def main() -> None:
     parser.add_argument("--api-key-path", type=Path, default=DEFAULT_API_KEY_PATH)
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--latest-path", type=Path, default=DEFAULT_LATEST_PATH)
+    parser.add_argument("--onroad-path", type=Path, default=DEFAULT_ONROAD_PATH)
     parser.add_argument("--interval", type=float, default=15)
     arguments = parser.parse_args()
     run(
@@ -121,6 +136,7 @@ def main() -> None:
         api_key_path=arguments.api_key_path,
         config_path=arguments.config_path,
         latest_path=arguments.latest_path,
+        onroad_path=arguments.onroad_path,
         interval=arguments.interval,
     )
 

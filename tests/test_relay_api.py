@@ -23,6 +23,7 @@ class RelayStoreTests(unittest.TestCase):
                     "connected": False,
                     "climate": {},
                     "last_climate_request": None,
+                    "parking": None,
                     "vehicle": None,
                 },
             )
@@ -47,6 +48,7 @@ class RelayStoreTests(unittest.TestCase):
                     "temperature_c": 25.0,
                     "humidity_pct": 42.8,
                     "counter": 9,
+                    "onroad": False,
                 },
                 received_at_unix=121,
             )
@@ -66,6 +68,14 @@ class RelayStoreTests(unittest.TestCase):
             self.assertEqual(status["cabin"]["raw_temperature_c"], 25.0)
             self.assertEqual(status["cabin"]["received_at_unix"], 121)
             self.assertTrue(status["connected"])
+            self.assertEqual(
+                status["parking"],
+                {
+                    "onroad": False,
+                    "parked_at_unix": 121,
+                    "protection_eligible_until_unix": 43321,
+                },
+            )
             self.assertEqual(
                 store.history(),
                 [
@@ -97,6 +107,7 @@ class RelayStoreTests(unittest.TestCase):
             self.assertEqual(persisted["cabin"]["counter"], 9)
             self.assertEqual(len(persisted["cabin_history"]), 2)
             self.assertEqual(persisted["vehicle"]["soc_pct"], 21)
+            self.assertEqual(persisted["parking"]["parked_at_unix"], 121)
 
     def test_rejects_invalid_config_and_telemetry(self):
         with tempfile.TemporaryDirectory() as directory:

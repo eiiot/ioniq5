@@ -26,6 +26,8 @@ class RelaySyncTests(unittest.TestCase):
             root = Path(directory)
             latest_path = root / "latest.json"
             config_path = root / "config.json"
+            onroad_path = root / "IsOnroad"
+            onroad_path.write_text("1")
             latest_path.write_text(
                 json.dumps({"temperature_c": 39.2, "counter": 10})
             )
@@ -40,10 +42,14 @@ class RelaySyncTests(unittest.TestCase):
                 latest_path=latest_path,
                 config_path=config_path,
                 previous_fingerprint=None,
+                onroad_path=onroad_path,
             )
 
             client.get_config.assert_called_once_with()
             client.push_telemetry.assert_called_once()
+            self.assertTrue(
+                client.push_telemetry.call_args.args[0]["onroad"]
+            )
             self.assertEqual(
                 json.loads(config_path.read_text()),
                 {"enabled": True, "threshold_f": 103.0},
@@ -55,9 +61,23 @@ class RelaySyncTests(unittest.TestCase):
                 latest_path=latest_path,
                 config_path=config_path,
                 previous_fingerprint=fingerprint,
+                onroad_path=onroad_path,
             )
             self.assertEqual(client.get_config.call_count, 2)
             client.push_telemetry.assert_called_once()
+
+            onroad_path.write_text("0")
+            sync_once(
+                client,
+                latest_path=latest_path,
+                config_path=config_path,
+                previous_fingerprint=fingerprint,
+                onroad_path=onroad_path,
+            )
+            self.assertEqual(client.push_telemetry.call_count, 2)
+            self.assertFalse(
+                client.push_telemetry.call_args.args[0]["onroad"]
+            )
 
 
 if __name__ == "__main__":

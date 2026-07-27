@@ -78,12 +78,43 @@ class ProtectionDecisionTests(unittest.TestCase):
             "last_succeeded": True,
             "last_completed_at_unix": 900,
         }
-        self.assertEqual(
+        self.assertIsNone(
             decide(True, temperature_f=100, climate=climate, now_unix=1_000),
+        )
+        self.assertEqual(
+            decide(True, temperature_f=106, climate=climate, now_unix=1_000),
             "start",
         )
+
+    def test_uses_explicit_restart_threshold_after_session_ends(self):
+        climate = {
+            "active": False,
+            "last_action": "stop",
+            "last_succeeded": True,
+            "last_completed_at_unix": 900,
+        }
         self.assertIsNone(
-            decide(True, temperature_f=95, climate=climate, now_unix=1_000)
+            decide(
+                True,
+                temperature_f=109,
+                climate=climate,
+                now_unix=1_000,
+                threshold_f=115,
+                target_f=105,
+                restart_threshold_f=110,
+            )
+        )
+        self.assertEqual(
+            decide(
+                True,
+                temperature_f=110,
+                climate=climate,
+                now_unix=1_000,
+                threshold_f=115,
+                target_f=105,
+                restart_threshold_f=110,
+            ),
+            "start",
         )
 
     def test_failed_start_uses_longer_backoff(self):

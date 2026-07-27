@@ -23,7 +23,13 @@ def decide(
     now_unix: float,
     threshold_f: float = START_THRESHOLD_F,
     target_f: float = STOP_TARGET_F,
+    restart_threshold_f: float | None = None,
 ) -> Decision:
+    restart_threshold = (
+        threshold_f
+        if restart_threshold_f is None
+        else restart_threshold_f
+    )
     active = climate.get("active") is True
     if active:
         failed_stop = (
@@ -48,7 +54,7 @@ def decide(
         if (
             failed_stop
             and runtime >= MAXIMUM_RUNTIME_SECONDS
-            and temperature_f > target_f
+            and temperature_f >= restart_threshold
         ):
             return "start"
         if runtime >= MAXIMUM_RUNTIME_SECONDS:
@@ -67,7 +73,10 @@ def decide(
     )
     if (
         temperature_f < threshold_f
-        and not (continuing_after_stop and temperature_f > target_f)
+        and not (
+            continuing_after_stop
+            and temperature_f >= restart_threshold
+        )
     ):
         return None
     if (
